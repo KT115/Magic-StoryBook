@@ -3,7 +3,8 @@ import time
 import random
 import streamlit as st
 from PIL import Image
-from transformers import pipeline
+import torch
+from transformers import BlipProcessor, BlipForConditionalGeneration, pipeline
 from gtts import gTTS
 
 # ---------------------------------------------------------
@@ -75,7 +76,6 @@ div.stButton > button:hover {
     box-shadow: 0 0 25px rgba(255, 209, 102, 0.8) !important;
 }
 
-/* Smooth fade & pop animation for transitions */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(12px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
@@ -85,25 +85,38 @@ div.stButton > button:hover {
 
 
 # ---------------------------------------------------------
-# 1. Model Loading
+# 1. Direct Model Loading (No Pipeline KeyError)
 # ---------------------------------------------------------
 @st.cache_resource
 def load_models():
-    """Loads and caches both Hugging Face models."""
-    caption_model = pipeline("image-captioning", model="Salesforce/blip-image-captioning-base")
+    """
+    Loads models directly via their explicit Hugging Face classes 
+    to avoid pipeline task KeyError issues on Streamlit Cloud.
+    """
+    # 1. BLIP Image Captioning
+    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+    caption_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    
+    # 2. Text Generation
     story_model = pipeline("text-generation", model="gpt2")
-    return caption_model, story_model
+    
+    return processor, caption_model, story_model
 
 
 # ---------------------------------------------------------
-# 2. Pipeline Helpers
+# 2. Pipeline Processing Helpers
 # ---------------------------------------------------------
-def get_caption(image, caption_pipe):
-    result = caption_pipe(image)
-    return result[0]["generated_text"]
+def get_caption(image, processor, caption_model):
+    """Generates an image caption using BLIP directly."""
+    inputs = processor(images=image, return_tensors="pt")
+    with torch.no_grad():
+        out = caption_model.generate(**inputs, max_new_tokens=40)
+    caption = processor.decode(out[0], skip_special_tokens=True)
+    return caption
 
 
 def get_story(caption, story_pipe):
+    """Expands the caption into a 50-100 word child-friendly story."""
     prompt = f"Once upon a time, there was {caption}. One sunny morning, a little hero found"
     output = story_pipe(
         prompt,
@@ -118,6 +131,7 @@ def get_story(caption, story_pipe):
 
 
 def text_to_speech(text, filename="fairy_story.mp3"):
+    """Converts the generated story to MP3 audio using gTTS."""
     tts = gTTS(text=text, lang="en")
     tts.save(filename)
     return filename
@@ -135,7 +149,7 @@ MAGIC_RIDDLES = [
 ]
 
 def render_magic_spell_loader(step_name):
-    """Shows an animated countdown with a riddle and deep breath for kids."""
+    """Shows an animated riddle and breathing prompt for kids."""
     riddle_q, riddle_a = random.choice(MAGIC_RIDDLES)
     loader_placeholder = st.empty()
     
@@ -144,13 +158,12 @@ def render_magic_spell_loader(step_name):
         <div class="riddle-box">
             <h3>✨ Casting Spell: {step_name}... ✨</h3>
             <p><strong>Riddle Time!</strong> {riddle_q}</p>
-            <p><i>Take a deep breath and blow gently at your screen to blow the magic dust! 💨</i></p>
+            <p><i>Take a deep breath and blow gently at your screen to spread magic dust! 💨</i></p>
         </div>
         """, unsafe_allow_html=True)
     
-    time.sleep(1.8)  # Gives kids a moment to interact and read
+    time.sleep(1.8)
     
-    # Reveal answer briefly
     with loader_placeholder.container():
         st.markdown(f"""
         <div class="riddle-box">
@@ -168,7 +181,7 @@ def render_magic_spell_loader(step_name):
 # 4. State Management (Multi-Step Storybook)
 # ---------------------------------------------------------
 if "step" not in st.session_state:
-    st.session_state.step = 1  # Steps: 1: Portal, 2: Crystal Ball, 3: Scroll, 4: Theatre
+    st.session_state.step = 1
 if "image" not in st.session_state:
     st.session_state.image = None
 if "caption" not in st.session_state:
@@ -180,12 +193,11 @@ if "audio_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 5. Main Wizard Application
+# 5. Main Application Flow
 # ---------------------------------------------------------
 def main():
     st.markdown("<h1>🏰 The Whispering Storybook 🏰</h1>", unsafe_allow_html=True)
     
-    # Visual chapter progress bar
     chapter_names = ["1. Enchanted Mirror", "2. Crystal Ball", "3. Magic Scroll", "4. Listening Tree"]
     current_chapter = chapter_names[st.session_state.step - 1]
     st.markdown(f"<p style='text-align: center; color: #ffd166; font-size: 1.1rem;'>Chapter {current_chapter}</p>", unsafe_allow_html=True)
@@ -215,10 +227,10 @@ def main():
                 st.balloons()
                 render_magic_spell_loader("Mirror Vision")
                 
-                # Run captioning model
-                caption_pipe, _ = load_models()
+                # Load models directly
+                processor, caption_model, _ = load_models()
                 with st.spinner("Deciphering secrets inside the picture..."):
-                    st.session_state.caption = get_caption(image, caption_pipe)
+                    st.session_state.caption = get_caption(image, processor, caption_model)
                 
                 st.session_state.step = 2
                 st.rerun()
@@ -253,8 +265,7 @@ def main():
             st.snow()
             render_magic_spell_loader("Story Weaving")
             
-            # Run text generation
-            _, story_pipe = load_models()
+            _, _, story_pipe = load_models()
             with st.spinner("Weaving golden threads into a story..."):
                 st.session_state.story = get_story(st.session_state.caption, story_pipe)
             
@@ -286,6 +297,9 @@ def main():
             if st.button("🔄 Start New Journey"):
                 st.session_state.step = 1
                 st.session_state.image = None
+                st.session_state.caption = ""
+                st.session_state.story = ""
+                st.session_state.audio_path = ""
                 st.rerun()
 
     # ---------------------------------------------------------
