@@ -1,17 +1,30 @@
 import os
+import re
 import time
 import random
 import streamlit as st
-from PIL import Image
+import streamlit.components.v1 as components
+from PIL import Image, ImageDraw, ImageFont
 import torch
 from transformers import BlipProcessor, BlipForConditionalGeneration, pipeline
 from gtts import gTTS
-from moviepy.editor import ImageClip, AudioFileClip
+from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 
 # ---------------------------------------------------------
 # Page Configuration & Pastel Fairytale Theme
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
+
+# Auto-scroll to top whenever a new chapter or loading page appears
+def scroll_to_top():
+    components.html(
+        """
+        <script>
+            window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
+        </script>
+        """,
+        height=0
+    )
 
 st.markdown("""
 <style>
@@ -113,20 +126,6 @@ div.stButton > button:hover {
     box-shadow: 0 10px 25px rgba(255, 73, 158, 0.55) !important;
 }
 
-/* Subtitle Banner in Chapter 5 */
-.subtitles-banner {
-    background: rgba(30, 11, 46, 0.9);
-    border: 2px solid #ffd166;
-    border-radius: 16px;
-    color: #fff9a6;
-    font-size: 1.15rem;
-    font-weight: 700;
-    padding: 1rem 1.4rem;
-    text-align: center;
-    line-height: 1.6;
-    margin-top: 0.8rem;
-}
-
 @keyframes floatOrb {
     0% { transform: translateY(0px) rotate(0deg) scale(1.0); }
     100% { transform: translateY(-16px) rotate(8deg) scale(1.1); }
@@ -201,24 +200,123 @@ def text_to_speech(text, filename="magic_audio.mp3"):
     return filename
 
 
-def make_storybook_video(image_path, audio_path, output_path="storybook_video.mp4"):
+# ---------------------------------------------------------
+# 3. Dynamic Storybook Page Video Generator
+# ---------------------------------------------------------
+def wrap_text(text, font, max_width, draw):
+    """Wraps text into neat lines fitting the storybook page width."""
+    words = text.split()
+    lines = []
+    current_line = []
+    for word in words:
+        current_line.append(word)
+        bbox = draw.textbbox((0, 0), " ".join(current_line), font=font)
+        if (bbox[2] - bbox[0]) > max_width:
+            current_line.pop()
+            lines.append(" ".join(current_line))
+            current_line = [word]
+    if current_line:
+        lines.append(" ".join(current_line))
+    return lines
+
+
+def render_storybook_page(image_path, sentence, page_num, total_pages, out_img_path):
+    """Draws a dedicated illustrated storybook page card."""
+    width, height = 960, 720
+    page = Image.new("RGB", (width, height), color="#FFFDF7")
+    draw = ImageDraw.Draw(page)
+
+    # Fairytale page borders
+    draw.rectangle([18, 18, width - 18, height - 18], outline="#FFB3C6", width=5)
+    draw.rectangle([28, 28, width - 28, height - 28], outline="#FFD166", width=2)
+
+    # Insert & scale user photo
+    try:
+        user_img = Image.open(image_path).convert("RGB")
+        user_img.thumbnail((540, 360))
+        img_x = (width - user_img.width) // 2
+        page.paste(user_img, (img_x, 50))
+        # Gold frame around photo
+        draw.rectangle([img_x - 3, 47, img_x + user_img.width + 3, 50 + user_img.height + 3], outline="#FF758F", width=3)
+    except Exception:
+        pass
+
+    # Load clean font
+    try:
+        font_sentence = ImageFont.truetype("DejaVuSans-Bold.ttf", 26)
+        font_footer = ImageFont.truetype("DejaVuSans.ttf", 20)
+    except Exception:
+        font_sentence = ImageFont.load_default()
+        font_footer = ImageFont.load_default()
+
+    # Draw page text
+    text_y = 440
+    lines = wrap_text(sentence, font_sentence, width - 140, draw)
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font_sentence)
+        line_w = bbox[2] - bbox[0]
+        draw.text(((width - line_w) // 2, text_y), line, fill="#2B2D42", font=font_sentence)
+        text_y += 38
+
+    # Page number footer
+    footer_text = f"📖 Page {page_num} of {total_pages}"
+    f_bbox = draw.textbbox((0, 0), footer_text, font=font_footer)
+    draw.text(((width - (f_bbox[2] - f_bbox[0])) // 2, height - 55), footer_text, fill="#FF477E", font=font_footer)
+
+    page.save(out_img_path)
+    return out_img_path
+
+
+def make_storybook_flip_video(image_path, story_text, audio_path, output_path="storybook_video.mp4"):
+    """
+    Splits story into sentence pages, auto-flips each page with cross-fade,
+    syncs narration, and caps duration strictly under 30s.
+    """
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', story_text) if s.strip()]
+    if not sentences:
+        sentences = [story_text]
+
     audio_clip = AudioFileClip(audio_path)
-    video_clip = ImageClip(image_path).set_duration(audio_clip.duration)
-    video_clip = video_clip.set_audio(audio_clip)
-    video_clip.write_videofile(
+    total_audio_duration = audio_clip.duration
+
+    # Cap overall storybook presentation duration to 30 seconds maximum
+    capped_duration = min(total_audio_duration, 29.5)
+    per_page_duration = max(2.5, capped_duration / len(sentences))
+
+    clips = []
+    for idx, sentence in enumerate(sentences, start=1):
+        temp_page_img = f"temp_page_{idx}.png"
+        render_storybook_page(image_path, sentence, idx, len(sentences), temp_page_img)
+        clip = ImageClip(temp_page_img).set_duration(per_page_duration).crossfadein(0.4)
+        clips.append(clip)
+
+    final_video = concatenate_videoclips(clips, method="compose")
+    
+    # Sync and trim audio
+    trimmed_audio = audio_clip.subclip(0, min(total_audio_duration, final_video.duration))
+    final_video = final_video.set_audio(trimmed_audio)
+
+    final_video.write_videofile(
         output_path,
         fps=24,
         codec="libx264",
         audio_codec="aac",
         logger=None
     )
+
+    # Cleanup temporary frame images
+    for idx in range(1, len(sentences) + 1):
+        tmp_f = f"temp_page_{idx}.png"
+        if os.path.exists(tmp_f):
+            os.remove(tmp_f)
+
     audio_clip.close()
-    video_clip.close()
+    final_video.close()
     return output_path
 
 
 # ---------------------------------------------------------
-# 3. Interactive Fairytale Riddles
+# 4. Interactive Kid Riddles
 # ---------------------------------------------------------
 RIDDLES = [
     ("🧙‍♂️ 'What has hands but cannot clap?'", "A clock! ⏰"),
@@ -230,7 +328,7 @@ RIDDLES = [
 
 
 # ---------------------------------------------------------
-# 4. State Management
+# 5. State Management
 # ---------------------------------------------------------
 if "step" not in st.session_state:
     st.session_state.step = 1
@@ -247,9 +345,10 @@ if "video_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 5. Main Application Flow
+# 6. Main Application Flow
 # ---------------------------------------------------------
 def main():
+    scroll_to_top()
     st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
 
     # -----------------------------------------------------
@@ -362,7 +461,7 @@ def main():
                 <p style="font-size: 1.2rem; color: #3d405b; font-weight: bold;">{q}</p>
                 <p style="color: #ff499e; font-size: 1.1rem;"><i>✨ Chant along: "Abracadabra, alakazam, weave a story as fast as you can!" ✨</i></p>
             </div>
-            <p style="color: #4361ee; font-weight: bold; font-size: 1.1rem;">📖 Crafting a magical 50-100 word adventure... 📖</p>
+            <p style="color: #4361ee; font-weight: bold; font-size: 1.1rem;">📖 Crafting a magical adventure under 30 seconds... 📖</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -414,7 +513,7 @@ def main():
                 st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 4: The Voice Harp (With Image, Audio & Story Text)
+    # CHAPTER 4: The Voice Harp (With Photo, Audio & Story)
     # -----------------------------------------------------
     elif st.session_state.step == 4:
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
@@ -429,7 +528,6 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # Top row: Image on left, Audio Generation / Player on right
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.session_state.uploaded_img:
@@ -437,7 +535,7 @@ def main():
         
         with col2:
             if not st.session_state.audio_path or not os.path.exists(st.session_state.audio_path):
-                st.markdown("<p style='text-align:center;'>Click below to summon the royal narrator!</p>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align:center;'>Click below to summon the fairy narrator!</p>", unsafe_allow_html=True)
                 if st.button("🧚 Cast Voice Spell"):
                     with st.spinner("Recording fairy voice..."):
                         st.session_state.audio_path = text_to_speech(st.session_state.story)
@@ -446,7 +544,6 @@ def main():
                 st.success("✨ Fairy Audio Narrated Successfully!")
                 st.audio(st.session_state.audio_path, format="audio/mp3")
 
-        # Full story displayed clearly inside Chapter 4
         st.markdown(f"""
         <div class="story-reader-box">
             <h3 style="color: #ff477e !important; margin-top: 0;">📖 Read Along with the Story:</h3>
@@ -460,7 +557,7 @@ def main():
         if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
             btn_c1, btn_c2 = st.columns([1, 1])
             with btn_c1:
-                if st.button("🎬 Generate Storybook Video (Chapter 5)"):
+                if st.button("🎬 Generate Storybook Flip Video (Chapter 5)"):
                     st.session_state.step = 5
                     st.rerun()
             with btn_c2:
@@ -469,35 +566,31 @@ def main():
                     st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 5: The Storybook Video (.mp4 Generation)
+    # CHAPTER 5: The Auto-Flipping Storybook Video (<30s)
     # -----------------------------------------------------
     elif st.session_state.step == 5:
-        st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 5: The Storybook Video</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 5: Auto-Flipping Storybook Video</p>", unsafe_allow_html=True)
         st.progress(1.0)
         st.balloons()
 
         st.markdown("""
         <div class="magic-parchment">
-            <h2>🎬 Chapter 5: The Living Storybook Video</h2>
+            <h2>🎬 Chapter 5: The Auto-Flipping Storybook Video</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Your video brings together the picture, synchronized voiceover, and full story subtitles!
+                Watch your storybook automatically flip pages sentence-by-sentence with full voice narration!
             </p>
         </div>
         """, unsafe_allow_html=True)
 
+        # Generate sentence-by-sentence flipping video
         if not st.session_state.video_path or not os.path.exists(st.session_state.video_path):
-            with st.spinner("Rendering your storybook video with synchronized audio..."):
-                video_file = make_storybook_video("temp_scene.png", st.session_state.audio_path)
+            with st.spinner("Binding fairytale pages and animating auto-flip video (<30s)..."):
+                video_file = make_storybook_flip_video("temp_scene.png", st.session_state.story, st.session_state.audio_path)
                 st.session_state.video_path = video_file
                 st.rerun()
 
+        # Render generated storybook video
         st.video(st.session_state.video_path)
-
-        st.markdown(f"""
-        <div class="subtitles-banner">
-            💛 <strong>Storybook Subtitles:</strong><br>"{st.session_state.story}"
-        </div>
-        """, unsafe_allow_html=True)
 
         st.write("")
         _, btn_c, _ = st.columns([1, 2, 1])
