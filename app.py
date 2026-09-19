@@ -8,19 +8,28 @@ from PIL import Image, ImageDraw, ImageFont
 import torch
 from transformers import BlipProcessor, BlipForConditionalGeneration, pipeline
 from gtts import gTTS
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips, AudioClip
 
 # ---------------------------------------------------------
 # Page Configuration & Pastel Fairytale Theme
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
-# Auto-scroll to top whenever a new chapter or loading page appears
-def scroll_to_top():
+# 穩健的強制置頂函式 (解決 Issue 1)
+def force_scroll_to_top():
     components.html(
         """
         <script>
-            window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
+            function scrollToTop() {
+                const mainSection = window.parent.document.querySelector('section.main');
+                if (mainSection) {
+                    mainSection.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+            scrollToTop();
+            setTimeout(scrollToTop, 150);
+            setTimeout(scrollToTop, 400);
         </script>
         """,
         height=0
@@ -30,7 +39,7 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Cinzel+Decorative:wght@700&display=swap');
 
-/* Dreamy Pastel Rainbow Gradient Backdrop */
+/* 全域夢幻粉彩背景 */
 [data-testid="stAppViewContainer"],
 [data-testid="stHeader"],
 .stApp {
@@ -40,7 +49,7 @@ st.markdown("""
     color: #4a4e69 !important;
 }
 
-/* Titles and Headers */
+/* 標題設定 */
 h1 {
     font-family: 'Cinzel Decorative', cursive !important;
     color: #ff477e !important;
@@ -56,37 +65,28 @@ h2, h3 {
     text-align: center;
 }
 
-/* Storybook Parchment Card */
+/* 羊皮紙卡片 */
 .magic-parchment {
-    background: rgba(255, 255, 255, 0.88) !important;
+    background: rgba(255, 255, 255, 0.9) !important;
     backdrop-filter: blur(12px);
-    border-radius: 28px !important;
+    border-radius: 26px !important;
     border: 3px solid #ffb3c6 !important;
-    box-shadow: 0 12px 35px rgba(255, 154, 162, 0.35), 0 0 20px rgba(255, 255, 255, 0.8) inset !important;
+    box-shadow: 0 12px 35px rgba(255, 154, 162, 0.35) !important;
     padding: 2rem !important;
     margin: 1.2rem 0 !important;
     animation: bounceIn 0.5s ease-out;
 }
 
-/* Story Text Reader Card */
-.story-reader-box {
-    background: #ffffff;
-    border: 2px dashed #ffb3c6;
-    border-radius: 20px;
-    padding: 1.4rem;
-    box-shadow: 0 6px 20px rgba(255, 182, 193, 0.25);
-    margin-top: 1.2rem;
-}
-
-/* Dedicated Spellcasting Chamber / Wait Page */
+/* 魔法 Loading 等待室 */
 .spell-chamber {
-    background: radial-gradient(circle, rgba(255,255,255,0.96) 0%, rgba(255,229,236,0.92) 100%);
+    background: radial-gradient(circle, rgba(255,255,255,0.98) 0%, rgba(255,230,240,0.95) 100%);
     border: 4px solid #ff70a6;
     border-radius: 30px;
     padding: 2.5rem 1.5rem;
     text-align: center;
-    box-shadow: 0 0 40px rgba(255, 112, 166, 0.6), 0 0 25px rgba(112, 214, 255, 0.5) inset;
+    box-shadow: 0 0 45px rgba(255, 112, 166, 0.6), 0 0 25px rgba(112, 214, 255, 0.5) inset;
     animation: pulseChamber 2.5s infinite alternate;
+    margin-top: 1rem;
 }
 
 .magic-crystal {
@@ -96,7 +96,7 @@ h2, h3 {
     margin-bottom: 0.5rem;
 }
 
-/* Centered Magic Buttons */
+/* 按鈕置中與樣式 */
 div[data-testid="stColumn"] {
     display: flex;
     justify-content: center;
@@ -145,11 +145,10 @@ div.stButton > button:hover {
 
 
 # ---------------------------------------------------------
-# 1. Model Initialization
+# 1. 模型初始化 (Direct Load 避免 KeyError)
 # ---------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_models():
-    """Direct model initialization avoiding task registry KeyError."""
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
     caption_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
     story_model = pipeline("text-generation", model="distilbert/distilgpt2")
@@ -170,41 +169,40 @@ def get_story(caption, story_pipe):
     clean_caption = caption.strip().rstrip(".")
     prompt = (
         f"Once upon a time, there was {clean_caption}. "
-        f"Every day was filled with fun, but today a secret golden rainbow door opened! "
-        f"With wide curious eyes, our brave little friend stepped forward"
+        f"Every day was filled with joy and games! "
+        f"Suddenly, a tiny magical golden door appeared. "
+        f"With curious eyes, our little friend opened it and stepped into wonderland. "
+        f"Everyone celebrated happily together!"
     )
-    
     output = story_pipe(
         prompt,
-        min_new_tokens=65,
-        max_new_tokens=95,
+        min_new_tokens=50,
+        max_new_tokens=85,
         do_sample=True,
-        temperature=0.85,
+        temperature=0.8,
         top_k=50,
-        top_p=0.92,
+        top_p=0.9,
         repetition_penalty=1.3
     )
-    
-    raw_story = output[0]["generated_text"]
-    last_period = max(raw_story.rfind("."), raw_story.rfind("!"), raw_story.rfind("?"))
+    raw = output[0]["generated_text"]
+    last_period = max(raw.rfind("."), raw.rfind("!"), raw.rfind("?"))
     if last_period != -1:
-        story = raw_story[:last_period + 1]
+        story = raw[:last_period + 1]
     else:
-        story = raw_story + " And everyone smiled happily ever after!"
+        story = raw + " And everyone lived happily ever after!"
     return story
 
 
-def text_to_speech(text, filename="magic_audio.mp3"):
+def text_to_speech(text, filename="story_full.mp3"):
     tts = gTTS(text=text, lang="en")
     tts.save(filename)
     return filename
 
 
 # ---------------------------------------------------------
-# 3. Dynamic Storybook Page Video Generator
+# 3. 繪本單頁繪製與翻頁童話影片生成 (解決 Issue 2)
 # ---------------------------------------------------------
 def wrap_text(text, font, max_width, draw):
-    """Wraps text into neat lines fitting the storybook page width."""
     words = text.split()
     lines = []
     current_line = []
@@ -220,81 +218,98 @@ def wrap_text(text, font, max_width, draw):
     return lines
 
 
-def render_storybook_page(image_path, sentence, page_num, total_pages, out_img_path):
-    """Draws a dedicated illustrated storybook page card."""
-    width, height = 960, 720
+def render_fairytale_book_page(image_path, sentence, page_num, total_pages, out_path):
+    """
+    100% 依據 attachment 繪製經典兒童繪本頁面：
+    雙粉金細邊框、白淨象牙底色、置中插圖、排版舒適的童書字體與頁碼
+    """
+    width, height = 1280, 960
     page = Image.new("RGB", (width, height), color="#FFFDF7")
     draw = ImageDraw.Draw(page)
 
-    # Fairytale page borders
-    draw.rectangle([18, 18, width - 18, height - 18], outline="#FFB3C6", width=5)
-    draw.rectangle([28, 28, width - 28, height - 28], outline="#FFD166", width=2)
+    # 繪製精美繪本書頁外框
+    draw.rectangle([25, 25, width - 25, height - 25], outline="#FF758F", width=6)
+    draw.rectangle([38, 38, width - 38, height - 38], outline="#FFD166", width=2)
+    draw.rectangle([48, 48, width - 48, height - 48], outline="#FFB3C6", width=1)
 
-    # Insert & scale user photo
+    # 放置置中的插圖
     try:
-        user_img = Image.open(image_path).convert("RGB")
-        user_img.thumbnail((540, 360))
-        img_x = (width - user_img.width) // 2
-        page.paste(user_img, (img_x, 50))
-        # Gold frame around photo
-        draw.rectangle([img_x - 3, 47, img_x + user_img.width + 3, 50 + user_img.height + 3], outline="#FF758F", width=3)
+        scene = Image.open(image_path).convert("RGB")
+        scene.thumbnail((620, 420))
+        img_x = (width - scene.width) // 2
+        img_y = 90
+        page.paste(scene, (img_x, img_y))
+        # 插圖精緻細框
+        draw.rectangle([img_x - 4, img_y - 4, img_x + scene.width + 4, img_y + scene.height + 4], outline="#FF70A6", width=4)
+        draw.rectangle([img_x - 8, img_y - 8, img_x + scene.width + 8, img_y + scene.height + 8], outline="#FFD166", width=1)
     except Exception:
         pass
 
-    # Load clean font
+    # 字體設定
     try:
-        font_sentence = ImageFont.truetype("DejaVuSans-Bold.ttf", 26)
-        font_footer = ImageFont.truetype("DejaVuSans.ttf", 20)
+        font_text = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
+        font_page = ImageFont.truetype("DejaVuSans.ttf", 22)
     except Exception:
-        font_sentence = ImageFont.load_default()
-        font_footer = ImageFont.load_default()
+        font_text = ImageFont.load_default()
+        font_page = ImageFont.load_default()
 
-    # Draw page text
-    text_y = 440
-    lines = wrap_text(sentence, font_sentence, width - 140, draw)
+    # 繪製本頁單一句子
+    text_y = 570
+    lines = wrap_text(sentence, font_text, width - 200, draw)
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font_sentence)
+        bbox = draw.textbbox((0, 0), line, font=font_text)
         line_w = bbox[2] - bbox[0]
-        draw.text(((width - line_w) // 2, text_y), line, fill="#2B2D42", font=font_sentence)
-        text_y += 38
+        draw.text(((width - line_w) // 2, text_y), line, fill="#2B2D42", font=font_text)
+        text_y += 48
 
-    # Page number footer
-    footer_text = f"📖 Page {page_num} of {total_pages}"
-    f_bbox = draw.textbbox((0, 0), footer_text, font=font_footer)
-    draw.text(((width - (f_bbox[2] - f_bbox[0])) // 2, height - 55), footer_text, fill="#FF477E", font=font_footer)
+    # 底部頁碼標記：📖 Page X of Y
+    page_label = f"📖 Page {page_num} of {total_pages}"
+    p_bbox = draw.textbbox((0, 0), page_label, font=font_page)
+    draw.text(((width - (p_bbox[2] - p_bbox[0])) // 2, height - 70), page_label, fill="#FF477E", font=font_page)
 
-    page.save(out_img_path)
-    return out_img_path
+    page.save(out_path)
+    return out_path
 
 
-def make_storybook_flip_video(image_path, story_text, audio_path, output_path="storybook_video.mp4"):
+def make_fairytale_flip_video(image_path, story_text, output_path="storybook_movie.mp4"):
     """
-    Splits story into sentence pages, auto-flips each page with cross-fade,
-    syncs narration, and caps duration strictly under 30s.
+    將故事切分成獨立句子，每頁單獨錄音，並合成自動翻頁的童話影片 (嚴格在 30 秒內)
     """
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', story_text) if s.strip()]
+    # 依標點切分句子
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', story_text) if len(s.strip()) > 3]
     if not sentences:
         sentences = [story_text]
+    # 最多 4 頁以確保在 30 秒內讀完
+    sentences = sentences[:4]
+    total_pages = len(sentences)
 
-    audio_clip = AudioFileClip(audio_path)
-    total_audio_duration = audio_clip.duration
+    page_clips = []
+    temp_files = []
 
-    # Cap overall storybook presentation duration to 30 seconds maximum
-    capped_duration = min(total_audio_duration, 29.5)
-    per_page_duration = max(2.5, capped_duration / len(sentences))
-
-    clips = []
     for idx, sentence in enumerate(sentences, start=1):
-        temp_page_img = f"temp_page_{idx}.png"
-        render_storybook_page(image_path, sentence, idx, len(sentences), temp_page_img)
-        clip = ImageClip(temp_page_img).set_duration(per_page_duration).crossfadein(0.4)
-        clips.append(clip)
+        # 1. 繪製單頁繪本
+        page_img_path = f"temp_flip_page_{idx}.png"
+        render_fairytale_book_page(image_path, sentence, idx, total_pages, page_img_path)
+        temp_files.append(page_img_path)
 
-    final_video = concatenate_videoclips(clips, method="compose")
-    
-    # Sync and trim audio
-    trimmed_audio = audio_clip.subclip(0, min(total_audio_duration, final_video.duration))
-    final_video = final_video.set_audio(trimmed_audio)
+        # 2. 為該頁獨立生成清晰的句子語音
+        page_audio_path = f"temp_flip_audio_{idx}.mp3"
+        tts = gTTS(text=sentence, lang="en", slow=False)
+        tts.save(page_audio_path)
+        temp_files.append(page_audio_path)
+
+        audio_clip = AudioFileClip(page_audio_path)
+        
+        # 加上 0.4 秒翻頁呼吸停頓
+        page_duration = max(3.5, audio_clip.duration + 0.5)
+        
+        # 生成該頁的 video clip (帶有平滑淡入轉場效果)
+        clip = ImageClip(page_img_path).set_duration(page_duration).set_audio(audio_clip)
+        if idx > 1:
+            clip = clip.crossfadein(0.35)
+        page_clips.append(clip)
+
+    final_video = concatenate_videoclips(page_clips, method="compose")
 
     final_video.write_videofile(
         output_path,
@@ -304,19 +319,22 @@ def make_storybook_flip_video(image_path, story_text, audio_path, output_path="s
         logger=None
     )
 
-    # Cleanup temporary frame images
-    for idx in range(1, len(sentences) + 1):
-        tmp_f = f"temp_page_{idx}.png"
-        if os.path.exists(tmp_f):
-            os.remove(tmp_f)
-
-    audio_clip.close()
+    # 釋放資源與清理暫存
+    for c in page_clips:
+        c.close()
     final_video.close()
+    for f in temp_files:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+
     return output_path
 
 
 # ---------------------------------------------------------
-# 4. Interactive Kid Riddles
+# 4. 謎題資料
 # ---------------------------------------------------------
 RIDDLES = [
     ("🧙‍♂️ 'What has hands but cannot clap?'", "A clock! ⏰"),
@@ -328,7 +346,7 @@ RIDDLES = [
 
 
 # ---------------------------------------------------------
-# 5. State Management
+# 5. Session State
 # ---------------------------------------------------------
 if "step" not in st.session_state:
     st.session_state.step = 1
@@ -345,14 +363,17 @@ if "video_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 6. Main Application Flow
+# 6. 主程式流程
 # ---------------------------------------------------------
 def main():
-    scroll_to_top()
+    # 頂部定位錨點與全域置頂跳轉
+    st.markdown('<div id="magic-top"></div>', unsafe_allow_html=True)
+    force_scroll_to_top()
+
     st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
 
     # -----------------------------------------------------
-    # CHAPTER 1: Image Upload
+    # CHAPTER 1: 上傳圖片
     # -----------------------------------------------------
     if st.session_state.step == 1:
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
@@ -371,7 +392,7 @@ def main():
 
         if uploaded_file is not None:
             st.session_state.uploaded_img = Image.open(uploaded_file).convert("RGB")
-            st.session_state.uploaded_img.save("temp_scene.png")
+            st.session_state.uploaded_img.save("temp_input_scene.png")
             st.image(st.session_state.uploaded_img, caption="Your Enchanted Picture", use_container_width=True)
 
             _, btn_c, _ = st.columns([1, 2, 1])
@@ -381,7 +402,7 @@ def main():
                     st.rerun()
 
     # -----------------------------------------------------
-    # LOADING SCREEN 1: Mirror Spellcasting Chamber
+    # LOADING SCREEN 1: 鏡像魔法陣 (自動跳頂)
     # -----------------------------------------------------
     elif st.session_state.step == "loading_mirror":
         q, a = random.choice(RIDDLES)
@@ -392,7 +413,7 @@ def main():
             <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold;">
                 The fairies are casting an enchantment over your picture!
             </p>
-            <div style="background: rgba(255,255,255,0.75); border-radius: 18px; padding: 1.2rem; margin: 1.5rem 0; border: 2px dashed #ffb3c6;">
+            <div style="background: rgba(255,255,255,0.85); border-radius: 18px; padding: 1.2rem; margin: 1.5rem 0; border: 2px dashed #ffb3c6;">
                 <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
                 <p style="font-size: 1.2rem; color: #3d405b; font-weight: bold;">{q}</p>
                 <p style="color: #ff499e; font-size: 1.1rem;"><i>💨 Blow soft magical breaths toward the screen while the portal opens!</i></p>
@@ -409,7 +430,7 @@ def main():
         st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 2: The Crystal Ball Speaks
+    # CHAPTER 2: 水晶球解讀
     # -----------------------------------------------------
     elif st.session_state.step == 2:
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
@@ -419,7 +440,7 @@ def main():
         st.markdown("""
         <div class="magic-parchment">
             <h2>🔮 Chapter 2: The Crystal Ball Speaks!</h2>
-            <p style="font-size: 1.15rem; text-align: center;">Here is the secret clue the crystal ball spotted inside your picture:</p>
+            <p style="font-size: 1.15rem; text-align: center;">Here is the secret clue discovered from your picture:</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -429,7 +450,7 @@ def main():
                 st.image(st.session_state.uploaded_img, caption="Your Clue", use_container_width=True)
         with col2:
             st.markdown(f"""
-            <div style="background: rgba(255, 255, 255, 0.9); padding: 1.4rem; border-radius: 18px; border: 2px solid #70d6ff; text-align: center; margin-top: 1rem;">
+            <div style="background: rgba(255, 255, 255, 0.92); padding: 1.4rem; border-radius: 18px; border: 2px solid #70d6ff; text-align: center; margin-top: 1rem;">
                 <h3 style="color: #6a0572 !important; margin: 0;">✨ Mirror Revelation:</h3>
                 <p style="font-size: 1.3rem; font-weight: bold; color: #ff477e; margin-top: 0.6rem;">
                     "{st.session_state.caption.capitalize()}"
@@ -445,7 +466,7 @@ def main():
                 st.rerun()
 
     # -----------------------------------------------------
-    # LOADING SCREEN 2: Story Weaving Chamber
+    # LOADING SCREEN 2: 故事編織等待室 (自動跳頂)
     # -----------------------------------------------------
     elif st.session_state.step == "loading_story":
         q, a = random.choice(RIDDLES)
@@ -454,14 +475,14 @@ def main():
             <div class="magic-crystal">📜✨🧚‍♀️</div>
             <h2 style="color: #ff477e !important;">Weaving Golden Story Threads...</h2>
             <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold;">
-                The royal elves are dipping enchanted quills into rainbow starlight ink!
+                The royal elves are dipping enchanted quills into starlight ink!
             </p>
-            <div style="background: rgba(255,255,255,0.75); border-radius: 18px; padding: 1.2rem; margin: 1.5rem 0; border: 2px dashed #ffb3c6;">
+            <div style="background: rgba(255,255,255,0.85); border-radius: 18px; padding: 1.2rem; margin: 1.5rem 0; border: 2px dashed #ffb3c6;">
                 <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
                 <p style="font-size: 1.2rem; color: #3d405b; font-weight: bold;">{q}</p>
                 <p style="color: #ff499e; font-size: 1.1rem;"><i>✨ Chant along: "Abracadabra, alakazam, weave a story as fast as you can!" ✨</i></p>
             </div>
-            <p style="color: #4361ee; font-weight: bold; font-size: 1.1rem;">📖 Crafting a magical adventure under 30 seconds... 📖</p>
+            <p style="color: #4361ee; font-weight: bold; font-size: 1.1rem;">📖 Crafting a magical fairy tale... 📖</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -473,7 +494,7 @@ def main():
         st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 3: The Golden Story Scroll
+    # CHAPTER 3: 黃金故事卷軸
     # -----------------------------------------------------
     elif st.session_state.step == 3:
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
@@ -513,7 +534,7 @@ def main():
                 st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 4: The Voice Harp (With Photo, Audio & Story)
+    # CHAPTER 4: 聲音之豎琴 (含插圖、語音與故事內文)
     # -----------------------------------------------------
     elif st.session_state.step == 4:
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
@@ -523,7 +544,7 @@ def main():
         <div class="magic-parchment">
             <h2>🎶 Chapter 4: The Voice Harp</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Transform your written adventure into spoken audio narration!
+                Listen to the fairy narrator tell the story before we bind it into the movie book!
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -544,8 +565,9 @@ def main():
                 st.success("✨ Fairy Audio Narrated Successfully!")
                 st.audio(st.session_state.audio_path, format="audio/mp3")
 
+        # 清楚顯示完整故事內容
         st.markdown(f"""
-        <div class="story-reader-box">
+        <div style="background: #ffffff; border: 2px dashed #ffb3c6; border-radius: 20px; padding: 1.4rem; margin-top: 1.2rem; box-shadow: 0 6px 20px rgba(255, 182, 193, 0.2);">
             <h3 style="color: #ff477e !important; margin-top: 0;">📖 Read Along with the Story:</h3>
             <p style="font-size: 1.18rem; line-height: 1.85; color: #2b2d42; margin-bottom: 0;">
                 {st.session_state.story}
@@ -557,7 +579,7 @@ def main():
         if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
             btn_c1, btn_c2 = st.columns([1, 1])
             with btn_c1:
-                if st.button("🎬 Generate Storybook Flip Video (Chapter 5)"):
+                if st.button("🎬 Generate Flip Storybook Movie (Chapter 5)"):
                     st.session_state.step = 5
                     st.rerun()
             with btn_c2:
@@ -566,39 +588,42 @@ def main():
                     st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 5: The Auto-Flipping Storybook Video (<30s)
+    # CHAPTER 5: 真正的童話翻頁繪本影片 (<30秒)
     # -----------------------------------------------------
     elif st.session_state.step == 5:
-        st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 5: Auto-Flipping Storybook Video</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 5: The Fairytale Flip Storybook</p>", unsafe_allow_html=True)
         st.progress(1.0)
         st.balloons()
 
         st.markdown("""
         <div class="magic-parchment">
-            <h2>🎬 Chapter 5: The Auto-Flipping Storybook Video</h2>
+            <h2>🎬 Chapter 5: The Fairytale Flip Storybook</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Watch your storybook automatically flip pages sentence-by-sentence with full voice narration!
+                Here is your animated picture book! Each page displays one sentence, automatically turning pages and reading the tale under 30 seconds!
             </p>
         </div>
         """, unsafe_allow_html=True)
 
-        # Generate sentence-by-sentence flipping video
+        # 生成翻頁故事書影片
         if not st.session_state.video_path or not os.path.exists(st.session_state.video_path):
-            with st.spinner("Binding fairytale pages and animating auto-flip video (<30s)..."):
-                video_file = make_storybook_flip_video("temp_scene.png", st.session_state.story, st.session_state.audio_path)
+            with st.spinner("Binding storybook pages and animating video (<30s)..."):
+                video_file = make_fairytale_flip_video("temp_input_scene.png", st.session_state.story)
                 st.session_state.video_path = video_file
                 st.rerun()
 
-        # Render generated storybook video
+        # 播放最終翻頁影片
         st.video(st.session_state.video_path)
 
         st.write("")
         _, btn_c, _ = st.columns([1, 2, 1])
         with btn_c:
             if st.button("🏰 Create a Brand New Fairytale"):
-                for f in ["temp_scene.png", st.session_state.audio_path, st.session_state.video_path]:
+                for f in ["temp_input_scene.png", st.session_state.audio_path, st.session_state.video_path]:
                     if os.path.exists(f):
-                        os.remove(f)
+                        try:
+                            os.remove(f)
+                        except Exception:
+                            pass
                 st.session_state.step = 1
                 st.session_state.uploaded_img = None
                 st.session_state.caption = ""
