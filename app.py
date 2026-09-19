@@ -12,12 +12,11 @@ from gtts import gTTS
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
-# Custom CSS matching the pastel pink, lavender, and mint sparkles backdrop
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Cinzel+Decorative:wght@700&display=swap');
 
-/* Dreamy Pastel Rainbow Gradient Backdrop matching your reference */
+/* Dreamy Pastel Rainbow Gradient Backdrop */
 [data-testid="stAppViewContainer"],
 [data-testid="stHeader"],
 .stApp {
@@ -27,11 +26,11 @@ st.markdown("""
     color: #4a4e69 !important;
 }
 
-/* Titles and Chapter Headers */
+/* Titles and Headers */
 h1 {
     font-family: 'Cinzel Decorative', cursive !important;
     color: #ff477e !important;
-    text-shadow: 0 2px 15px rgba(255, 255, 255, 0.9), 0 0 20px rgba(255, 117, 143, 0.4) !important;
+    text-shadow: 0 2px 15px rgba(255, 255, 255, 0.9) !important;
     text-align: center;
     font-size: 2.2rem !important;
 }
@@ -43,7 +42,7 @@ h2, h3 {
     text-align: center;
 }
 
-/* Storybook Parchment / Glassmorphism Card */
+/* Storybook Parchment Card */
 .magic-parchment {
     background: rgba(255, 255, 255, 0.88) !important;
     backdrop-filter: blur(12px);
@@ -57,7 +56,7 @@ h2, h3 {
 
 /* Magical Loading Card */
 .magic-loader {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.95);
     border: 3px dashed #ff70a6;
     border-radius: 22px;
     padding: 1.5rem;
@@ -66,7 +65,7 @@ h2, h3 {
     box-shadow: 0 8px 25px rgba(255, 112, 166, 0.25);
 }
 
-/* Buttons Centering and Fairy Rainbow Styling */
+/* Centered Magic Buttons */
 div[data-testid="stColumn"] {
     display: flex;
     justify-content: center;
@@ -96,7 +95,7 @@ div.stButton > button:hover {
     box-shadow: 0 10px 25px rgba(255, 73, 158, 0.55) !important;
 }
 
-/* Chapter 5 Video Screen with animated Ken-Burns zoom effect */
+/* Cinema Container & Subtitles */
 .storybook-cinema {
     position: relative;
     background: #000;
@@ -108,7 +107,7 @@ div.stButton > button:hover {
 }
 
 .subtitles-banner {
-    background: rgba(30, 11, 46, 0.85);
+    background: rgba(30, 11, 46, 0.88);
     border-top: 2px solid #ffd166;
     color: #fff9a6;
     font-size: 1.2rem;
@@ -129,7 +128,7 @@ div.stButton > button:hover {
 # ---------------------------------------------------------
 # 1. Model Initialization
 # ---------------------------------------------------------
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner="🧙‍♂️ Gathering magical fairy spellbooks (downloading models)...")
 def load_models():
     """
     Direct model initialization (no pipeline KeyError).
@@ -154,22 +153,21 @@ def get_caption(image, processor, caption_model):
 
 def get_story(caption, story_pipe):
     clean_caption = caption.strip().rstrip(".")
-    # Prompts crafted specifically for children aged 3-10
     prompt = (
         f"Once upon a time, there was {clean_caption}. "
-        f"Every day was filled with cozy games, but one day a secret glowing path appeared! "
+        f"Every day was filled with fun, but today a secret golden rainbow door opened! "
         f"With wide curious eyes, our brave little friend stepped forward"
     )
     
     output = story_pipe(
         prompt,
-        min_new_tokens=65,       # Enforces 50-100 word narrative
+        min_new_tokens=65,
         max_new_tokens=95,
         do_sample=True,
         temperature=0.85,
         top_k=50,
         top_p=0.92,
-        repetition_penalty=1.3   # Stops repetition loops
+        repetition_penalty=1.3
     )
     
     raw_story = output[0]["generated_text"]
@@ -188,7 +186,7 @@ def text_to_speech(text, filename="magic_audio.mp3"):
 
 
 # ---------------------------------------------------------
-# 3. Whimsical Loading Experience for Kids
+# 3. Interactive Kid Activities
 # ---------------------------------------------------------
 RIDDLES = [
     ("🧙‍♂️ 'What has hands but cannot clap?'", "A clock! ⏰"),
@@ -198,39 +196,9 @@ RIDDLES = [
     ("🧚 'What is full of holes but still holds water?'", "A sponge! 🧽")
 ]
 
-def show_fairy_loader(spell_title, subtext):
-    """Replaces technical logs with fairytale copywriting and activities."""
-    q, a = random.choice(RIDDLES)
-    placeholder = st.empty()
-    
-    with placeholder.container():
-        st.markdown(f"""
-        <div class="magic-loader">
-            <h3 style="color: #ff477e !important;">✨ {spell_title} ✨</h3>
-            <p style="font-size: 1.15rem; color: #6a0572;">{subtext}</p>
-            <hr style="border-top: 1px dashed #ffb3c6; margin: 0.8rem 0;">
-            <p><strong>🦄 Riddle for you:</strong> {q}</p>
-            <p style="color: #ff758f; font-weight: bold;">💨 Take a gentle breath and blow magic sparkles on the screen!</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    time.sleep(2.0)
-    
-    with placeholder.container():
-        st.markdown(f"""
-        <div class="magic-loader">
-            <h3 style="color: #70d6ff !important;">🪄 Spell Complete! 🪄</h3>
-            <p style="font-size: 1.2rem; color: #38b000;"><strong>Answer:</strong> {a}</p>
-            <p>🌟 <i>Tadaaa! Look what the fairies made!</i> 🌟</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    time.sleep(1.2)
-    placeholder.empty()
-
 
 # ---------------------------------------------------------
-# 4. State Management (5-Chapter Flow)
+# 4. State Management
 # ---------------------------------------------------------
 if "step" not in st.session_state:
     st.session_state.step = 1
@@ -261,7 +229,7 @@ def main():
     st.progress(st.session_state.step / 5)
 
     # -----------------------------------------------------
-    # CHAPTER 1: Image Upload
+    # CHAPTER 1: The Magic Portal
     # -----------------------------------------------------
     if st.session_state.step == 1:
         st.markdown("""
@@ -276,24 +244,39 @@ def main():
         uploaded_file = st.file_uploader("Choose a picture to transform into a bedtime story:", type=["png", "jpg", "jpeg"])
 
         if uploaded_file is not None:
-            image = Image.open(uploaded_file).convert("RGB")
-            st.session_state.uploaded_img = image
-            st.image(image, caption="Your Enchanted Picture", use_container_width=True)
+            # Store image in persistent session state
+            st.session_state.uploaded_img = Image.open(uploaded_file).convert("RGB")
+            st.image(st.session_state.uploaded_img, caption="Your Enchanted Picture", use_container_width=True)
 
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
                 if st.button("🪄 Awaken the Magic Mirror 🪄"):
-                    st.balloons()
-                    # Custom whimsical loading message
-                    show_fairy_loader("Summoning Vision Fairies", "The mirror is sprinkling pixie dust over your picture...")
+                    loader_container = st.empty()
+                    q, a = random.choice(RIDDLES)
                     
+                    with loader_container.container():
+                        st.markdown(f"""
+                        <div class="magic-loader">
+                            <h3 style="color: #ff477e !important;">✨ Summoning Vision Fairies... ✨</h3>
+                            <p style="font-size: 1.15rem; color: #6a0572;">The mirror is sprinkling pixie dust over your picture!</p>
+                            <hr style="border-top: 1px dashed #ffb3c6; margin: 0.8rem 0;">
+                            <p><strong>🦄 Riddle while waiting:</strong> {q}</p>
+                            <p style="color: #ff758f; font-weight: bold;">💨 Blow gentle sparkles on the screen!</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Run processing while loader is visible
                     processor, caption_model, _ = load_models()
-                    st.session_state.caption = get_caption(image, processor, caption_model)
+                    caption_text = get_caption(st.session_state.uploaded_img, processor, caption_model)
+                    st.session_state.caption = caption_text
+
+                    # Transition to step 2 immediately
+                    loader_container.empty()
                     st.session_state.step = 2
                     st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 2: The Clue
+    # CHAPTER 2: The Crystal Ball
     # -----------------------------------------------------
     elif st.session_state.step == 2:
         st.markdown("""
@@ -321,16 +304,28 @@ def main():
         _, btn_c, _ = st.columns([1, 2, 1])
         with btn_c:
             if st.button("📜 Weave a Fairytale from This Clue! 📜"):
-                st.snow()
-                show_fairy_loader("Spinning Golden Story Threads", "The storybook elves are writing an adventure just for you...")
+                loader_container = st.empty()
+                q, a = random.choice(RIDDLES)
                 
+                with loader_container.container():
+                    st.markdown(f"""
+                    <div class="magic-loader">
+                        <h3 style="color: #ff477e !important;">✨ Spinning Golden Story Threads... ✨</h3>
+                        <p style="font-size: 1.15rem; color: #6a0572;">The storybook elves are writing an adventure just for you!</p>
+                        <hr style="border-top: 1px dashed #ffb3c6; margin: 0.8rem 0;">
+                        <p><strong>🦄 Riddle while waiting:</strong> {q}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
                 _, _, story_pipe = load_models()
                 st.session_state.story = get_story(st.session_state.caption, story_pipe)
+                
+                loader_container.empty()
                 st.session_state.step = 3
                 st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 3: The Golden Scroll (Image + Story Together)
+    # CHAPTER 3: The Golden Story Scroll
     # -----------------------------------------------------
     elif st.session_state.step == 3:
         st.markdown("""
@@ -356,7 +351,7 @@ def main():
         st.write("")
         btn_c1, btn_c2 = st.columns([1, 1])
         with btn_c1:
-            if st.button("🎶 Proceed to Voice Harp"):
+            if st.button("🎶 Proceed to Voice Harp (Chapter 4)"):
                 st.session_state.step = 4
                 st.rerun()
         with btn_c2:
@@ -366,14 +361,14 @@ def main():
                 st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 4: The Voice Harp (Audio Generation)
+    # CHAPTER 4: The Voice Harp
     # -----------------------------------------------------
     elif st.session_state.step == 4:
         st.markdown("""
         <div class="magic-parchment">
             <h2>🎶 Chapter 4: The Voice Harp</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Let the singing fairies transform this written tale into enchanting spoken audio!
+                Let the singing fairies transform this written tale into spoken audio narration!
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -382,21 +377,30 @@ def main():
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
                 if st.button("🧚 Cast Voice Spell"):
-                    show_fairy_loader("Harmonizing the Fairyland Harp", "Recording the royal storyteller's warm voice...")
+                    loader_container = st.empty()
+                    with loader_container.container():
+                        st.markdown("""
+                        <div class="magic-loader">
+                            <h3 style="color: #ff477e !important;">✨ Harmonizing the Fairyland Harp... ✨</h3>
+                            <p style="font-size: 1.15rem; color: #6a0572;">Recording the royal storyteller's warm voice!</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
                     st.session_state.audio_path = text_to_speech(st.session_state.story)
+                    loader_container.empty()
                     st.rerun()
         else:
-            st.success("✨ Fairy Audio Recorded Successfully!")
+            st.success("✨ Fairy Audio Narrated Successfully!")
             st.audio(st.session_state.audio_path, format="audio/mp3")
 
             st.write("")
             btn_c1, btn_c2 = st.columns([1, 1])
             with btn_c1:
-                if st.button("🎬 Watch Living Story Cinema (Step 5)"):
+                if st.button("🎬 Open Living Story Cinema (Chapter 5)"):
                     st.session_state.step = 5
                     st.rerun()
             with btn_c2:
-                if st.button("📜 Return to Story Scroll"):
+                if st.button("📜 Back to Story Scroll"):
                     st.session_state.step = 3
                     st.rerun()
 
@@ -409,17 +413,15 @@ def main():
         <div class="magic-parchment">
             <h2>🎬 Chapter 5: The Living Story Cinema</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Your illustrated fairytale comes alive with synced voice narration and on-screen subtitles!
+                Your fairytale illustrated book comes alive with synced voice narration and on-screen subtitles!
             </p>
         </div>
         """, unsafe_allow_html=True)
 
-        # Full Storybook Cinema Theater Box
         st.markdown('<div class="storybook-cinema">', unsafe_allow_html=True)
         if st.session_state.uploaded_img:
             st.image(st.session_state.uploaded_img, use_container_width=True)
         
-        # Embedded Subtitle Banner directly beneath the picture
         st.markdown(f"""
         <div class="subtitles-banner">
             💛 <strong>Subtitles:</strong> "{st.session_state.story}"
@@ -427,7 +429,6 @@ def main():
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Voice audio controller
         if os.path.exists(st.session_state.audio_path):
             st.audio(st.session_state.audio_path, format="audio/mp3")
 
