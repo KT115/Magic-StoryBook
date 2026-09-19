@@ -220,7 +220,7 @@ def main():
     if st.session_state.step == 1:
         st.markdown("""
         <div class="magic-parchment">
-            <h2 style="color: #6b2d5c !important;">🔮 Step 1: Feed the Magic Mirror</h2>
+            <h2 style="color: #6b2d5c !important;">🔮 Chapter 1: Feed the Magic Mirror</h2>
             <p style="font-size: 1.2rem; text-align: center;">
                 Upload an illustration, toy photo, or drawing! The mirror will gaze inside.
             </p>
@@ -253,7 +253,7 @@ def main():
     elif st.session_state.step == 2:
         st.markdown("""
         <div class="magic-parchment">
-            <h2 style="color: #6b2d5c !important;">🔮 Step 2: The Crystal Ball Speaks!</h2>
+            <h2 style="color: #6b2d5c !important;">🔮 Chapter 2: The Crystal Ball Speaks!</h2>
             <p style="font-size: 1.15rem; text-align: center;">Here is what the magical mirror discovered:</p>
         </div>
         """, unsafe_allow_html=True)
@@ -292,7 +292,7 @@ def main():
     elif st.session_state.step == 3:
         st.markdown("""
         <div class="magic-parchment">
-            <h2 style="color: #6b2d5c !important;">📜 Step 3: The Golden Story Scroll</h2>
+            <h2 style="color: #6b2d5c !important;">📜 Chapter 3: The Golden Story Scroll</h2>
         </div>
         """, unsafe_allow_html=True)
 
@@ -334,7 +334,7 @@ def main():
         st.balloons()
         st.markdown("""
         <div class="magic-parchment">
-            <h2 style="color: #6b2d5c !important;">🎬 Step 4: Fairyland Story Cinema</h2>
+            <h2 style="color: #6b2d5c !important;">🎬 Chapter 4: Fairyland Story Cinema</h2>
             <p style="font-size: 1.15rem; text-align: center; color: #3d405b;">
                 Watch the magical scene come alive as the story is read to you!
             </p>
