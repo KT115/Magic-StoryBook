@@ -6,6 +6,7 @@ from PIL import Image
 import torch
 from transformers import BlipProcessor, BlipForConditionalGeneration, pipeline
 from gtts import gTTS
+from moviepy.editor import ImageClip, AudioFileClip
 
 # ---------------------------------------------------------
 # Page Configuration & Pastel Fairytale Theme
@@ -95,26 +96,18 @@ div.stButton > button:hover {
     box-shadow: 0 10px 25px rgba(255, 73, 158, 0.55) !important;
 }
 
-/* Cinema Container & Subtitles */
-.storybook-cinema {
-    position: relative;
-    background: #000;
-    border: 5px solid #ffb3c6;
-    border-radius: 24px;
-    overflow: hidden;
-    box-shadow: 0 10px 30px rgba(112, 214, 255, 0.4);
-    margin: 1.2rem 0;
-}
-
+/* Subtitle Banner in Chapter 5 */
 .subtitles-banner {
-    background: rgba(30, 11, 46, 0.88);
-    border-top: 2px solid #ffd166;
+    background: rgba(30, 11, 46, 0.9);
+    border: 2px solid #ffd166;
+    border-radius: 16px;
     color: #fff9a6;
-    font-size: 1.2rem;
+    font-size: 1.15rem;
     font-weight: 700;
     padding: 1rem 1.4rem;
     text-align: center;
     line-height: 1.6;
+    margin-top: 0.8rem;
 }
 
 @keyframes bounceIn {
@@ -128,10 +121,10 @@ div.stButton > button:hover {
 # ---------------------------------------------------------
 # 1. Model Initialization
 # ---------------------------------------------------------
-@st.cache_resource(show_spinner="🧙‍♂️ Gathering magical fairy spellbooks (downloading models)...")
+@st.cache_resource(show_spinner="🧙‍♂️ Gathering magical fairy spellbooks...")
 def load_models():
     """
-    Direct model initialization (no pipeline KeyError).
+    Direct model initialization to avoid KeyError.
       - Vision: Salesforce/blip-image-captioning-base
       - Story:  distilbert/distilgpt2
     """
@@ -185,8 +178,29 @@ def text_to_speech(text, filename="magic_audio.mp3"):
     return filename
 
 
+def make_storybook_video(image_path, audio_path, output_path="storybook_video.mp4"):
+    """
+    Generates an actual MP4 video combining the picture and audio narration.
+    """
+    audio_clip = AudioFileClip(audio_path)
+    video_clip = ImageClip(image_path).set_duration(audio_clip.duration)
+    video_clip = video_clip.set_audio(audio_clip)
+    
+    # Render MP4 video
+    video_clip.write_videofile(
+        output_path,
+        fps=24,
+        codec="libx264",
+        audio_codec="aac",
+        logger=None
+    )
+    audio_clip.close()
+    video_clip.close()
+    return output_path
+
+
 # ---------------------------------------------------------
-# 3. Interactive Kid Activities
+# 3. Interactive Kid Riddles
 # ---------------------------------------------------------
 RIDDLES = [
     ("🧙‍♂️ 'What has hands but cannot clap?'", "A clock! ⏰"),
@@ -210,6 +224,8 @@ if "story" not in st.session_state:
     st.session_state.story = ""
 if "audio_path" not in st.session_state:
     st.session_state.audio_path = ""
+if "video_path" not in st.session_state:
+    st.session_state.video_path = ""
 
 
 # ---------------------------------------------------------
@@ -223,13 +239,13 @@ def main():
         "Chapter 2: The Crystal Ball",
         "Chapter 3: The Golden Scroll",
         "Chapter 4: The Voice Harp",
-        "Chapter 5: The Living Story Cinema"
+        "Chapter 5: The Storybook Video"
     ]
     st.markdown(f"<p style='text-align: center; color: #6a0572; font-size: 1.15rem; font-weight: 700;'>{chapter_titles[st.session_state.step - 1]}</p>", unsafe_allow_html=True)
     st.progress(st.session_state.step / 5)
 
     # -----------------------------------------------------
-    # CHAPTER 1: The Magic Portal
+    # CHAPTER 1: Image Upload
     # -----------------------------------------------------
     if st.session_state.step == 1:
         st.markdown("""
@@ -244,8 +260,9 @@ def main():
         uploaded_file = st.file_uploader("Choose a picture to transform into a bedtime story:", type=["png", "jpg", "jpeg"])
 
         if uploaded_file is not None:
-            # Store image in persistent session state
             st.session_state.uploaded_img = Image.open(uploaded_file).convert("RGB")
+            # Save local copy for moviepy video rendering
+            st.session_state.uploaded_img.save("temp_scene.png")
             st.image(st.session_state.uploaded_img, caption="Your Enchanted Picture", use_container_width=True)
 
             _, btn_c, _ = st.columns([1, 2, 1])
@@ -265,12 +282,9 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # Run processing while loader is visible
                     processor, caption_model, _ = load_models()
-                    caption_text = get_caption(st.session_state.uploaded_img, processor, caption_model)
-                    st.session_state.caption = caption_text
+                    st.session_state.caption = get_caption(st.session_state.uploaded_img, processor, caption_model)
 
-                    # Transition to step 2 immediately
                     loader_container.empty()
                     st.session_state.step = 2
                     st.rerun()
@@ -361,27 +375,33 @@ def main():
                 st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 4: The Voice Harp
+    # CHAPTER 4: The Voice Harp (Includes Photo Now)
     # -----------------------------------------------------
     elif st.session_state.step == 4:
         st.markdown("""
         <div class="magic-parchment">
             <h2>🎶 Chapter 4: The Voice Harp</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Let the singing fairies transform this written tale into spoken audio narration!
+                Transform your written adventure into spoken audio narration!
             </p>
         </div>
         """, unsafe_allow_html=True)
 
-        if not st.session_state.audio_path or not os.path.exists(st.session_state.audio_path):
-            _, btn_c, _ = st.columns([1, 2, 1])
-            with btn_c:
+        # Photo and Voice generation together in Chapter 4
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.session_state.uploaded_img:
+                st.image(st.session_state.uploaded_img, caption="The Storybook Scene", use_container_width=True)
+        
+        with col2:
+            if not st.session_state.audio_path or not os.path.exists(st.session_state.audio_path):
+                st.markdown("<p style='text-align:center;'>Click below to summon the royal narrator!</p>", unsafe_allow_html=True)
                 if st.button("🧚 Cast Voice Spell"):
                     loader_container = st.empty()
                     with loader_container.container():
                         st.markdown("""
                         <div class="magic-loader">
-                            <h3 style="color: #ff477e !important;">✨ Harmonizing the Fairyland Harp... ✨</h3>
+                            <h3 style="color: #ff477e !important;">✨ Harmonizing the Voice Harp... ✨</h3>
                             <p style="font-size: 1.15rem; color: #6a0572;">Recording the royal storyteller's warm voice!</p>
                         </div>
                         """, unsafe_allow_html=True)
@@ -389,14 +409,15 @@ def main():
                     st.session_state.audio_path = text_to_speech(st.session_state.story)
                     loader_container.empty()
                     st.rerun()
-        else:
-            st.success("✨ Fairy Audio Narrated Successfully!")
-            st.audio(st.session_state.audio_path, format="audio/mp3")
+            else:
+                st.success("✨ Fairy Audio Narrated Successfully!")
+                st.audio(st.session_state.audio_path, format="audio/mp3")
 
-            st.write("")
+        st.write("")
+        if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
             btn_c1, btn_c2 = st.columns([1, 1])
             with btn_c1:
-                if st.button("🎬 Open Living Story Cinema (Chapter 5)"):
+                if st.button("🎬 Generate Storybook Video (Chapter 5)"):
                     st.session_state.step = 5
                     st.rerun()
             with btn_c2:
@@ -405,44 +426,58 @@ def main():
                     st.rerun()
 
     # -----------------------------------------------------
-    # CHAPTER 5: The Living Story Cinema (Video & Subtitles)
+    # CHAPTER 5: The Storybook Video (.mp4 Generation)
     # -----------------------------------------------------
     elif st.session_state.step == 5:
         st.balloons()
         st.markdown("""
         <div class="magic-parchment">
-            <h2>🎬 Chapter 5: The Living Story Cinema</h2>
+            <h2>🎬 Chapter 5: The Living Storybook Video</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Your fairytale illustrated book comes alive with synced voice narration and on-screen subtitles!
+                Your video brings together the picture, synchronized voiceover, and full story subtitles!
             </p>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown('<div class="storybook-cinema">', unsafe_allow_html=True)
-        if st.session_state.uploaded_img:
-            st.image(st.session_state.uploaded_img, use_container_width=True)
-        
+        # Generate actual MP4 video if not yet compiled
+        if not st.session_state.video_path or not os.path.exists(st.session_state.video_path):
+            loader = st.empty()
+            with loader.container():
+                st.markdown("""
+                <div class="magic-loader">
+                    <h3 style="color: #ff477e !important;">🎞️ Crafting Magic Video Reel... 🎞️</h3>
+                    <p style="font-size: 1.15rem; color: #6a0572;">Synchronizing your image, subtitles, and fairy audio into an MP4 video!</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+            video_file = make_storybook_video("temp_scene.png", st.session_state.audio_path)
+            st.session_state.video_path = video_file
+            loader.empty()
+
+        # Display actual generated MP4 video file
+        st.video(st.session_state.video_path)
+
+        # Subtitles banner
         st.markdown(f"""
         <div class="subtitles-banner">
-            💛 <strong>Subtitles:</strong> "{st.session_state.story}"
+            💛 <strong>Storybook Subtitles:</strong><br>"{st.session_state.story}"
         </div>
         """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if os.path.exists(st.session_state.audio_path):
-            st.audio(st.session_state.audio_path, format="audio/mp3")
 
         st.write("")
         _, btn_c, _ = st.columns([1, 2, 1])
         with btn_c:
             if st.button("🏰 Create a Brand New Fairytale"):
-                if os.path.exists(st.session_state.audio_path):
-                    os.remove(st.session_state.audio_path)
+                # Clean up local temporary media
+                for f in ["temp_scene.png", st.session_state.audio_path, st.session_state.video_path]:
+                    if os.path.exists(f):
+                        os.remove(f)
                 st.session_state.step = 1
                 st.session_state.uploaded_img = None
                 st.session_state.caption = ""
                 st.session_state.story = ""
                 st.session_state.audio_path = ""
+                st.session_state.video_path = ""
                 st.rerun()
 
 
