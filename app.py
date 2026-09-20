@@ -17,7 +17,7 @@ from gtts import gTTS
 torch.set_num_threads(4)
 
 # ---------------------------------------------------------
-# 1. 頁面配置與全局樣式 (獨角獸粉彩拖放上傳區、高對比度文字)
+# 1. 頁面配置與全局樣式 (修復上傳區黑色底色、單行標題、按鈕置中)
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
@@ -25,7 +25,7 @@ def inject_global_features():
     """無感啟動 BGM 與每次切換平滑置頂"""
     components.html(
         """
-        <audio id="bgm" loop>
+        <audio id="bgm" loop autoplay>
             <source src="https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1cb8.mp3" type="audio/mpeg">
         </audio>
         <script>
@@ -34,10 +34,13 @@ def inject_global_features():
             if (mainSection) { mainSection.scrollTo({top: 0, behavior: 'smooth'}); }
 
             var bgm = document.getElementById("bgm");
-            bgm.volume = 0.15;
+            if (bgm) {
+                bgm.volume = 0.15;
+                bgm.play().catch(e => console.log("等待使用者互動解鎖 BGM..."));
+            }
             window.parent.document.body.addEventListener('click', function() {
-                if (bgm.paused) {
-                    bgm.play().catch(e => console.log("等待互動..."));
+                if (bgm && bgm.paused) {
+                    bgm.play().catch(e => console.log("BGM 播放中..."));
                 }
             }, { once: true });
         </script>
@@ -67,14 +70,17 @@ st.markdown("""
     font-family: 'Quicksand', sans-serif !important;
 }
 
-/* 標題與文字高對比度優化 */
+/* 標題強制單行顯示 (Title in one line) 避免折行 */
 h1 {
     font-family: 'Cinzel Decorative', cursive !important;
     color: #d81159 !important;
     text-shadow: 0 2px 10px rgba(255, 255, 255, 0.95) !important;
     text-align: center;
-    font-size: 2.3rem !important;
+    font-size: 2rem !important;
     font-weight: 800 !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 h2, h3 {
@@ -82,6 +88,7 @@ h2, h3 {
     font-weight: 800 !important;
     color: #4a0e4e !important;
     text-align: center;
+    white-space: nowrap !important;
 }
 
 p, span, label, div {
@@ -122,7 +129,6 @@ p, span, label, div {
     box-shadow: 0 14px 30px rgba(255, 71, 126, 0.35), 0 0 25px rgba(112, 214, 255, 0.35) inset !important;
 }
 
-/* 上傳區內提示字與圖示 */
 [data-testid="stFileUploadDropzone"] div,
 [data-testid="stFileUploadDropzone"] span,
 [data-testid="stFileUploadDropzone"] small {
@@ -130,7 +136,6 @@ p, span, label, div {
     font-weight: 700 !important;
 }
 
-/* 上傳區內的按鈕樣式 */
 [data-testid="stFileUploadDropzone"] button {
     background: linear-gradient(135deg, #ff758f 0%, #ff499e 100%) !important;
     color: #ffffff !important;
@@ -139,12 +144,6 @@ p, span, label, div {
     font-weight: 800 !important;
     padding: 0.5rem 1.6rem !important;
     box-shadow: 0 4px 15px rgba(255, 73, 158, 0.4) !important;
-    transition: all 0.2s ease !important;
-}
-
-[data-testid="stFileUploadDropzone"] button:hover {
-    transform: scale(1.05) !important;
-    box-shadow: 0 6px 20px rgba(255, 73, 158, 0.6) !important;
 }
 
 /* 獨立施法 Loading 頁面卡片 */
@@ -179,7 +178,7 @@ p, span, label, div {
     100% { transform: translateY(-30px) scale(1.15); }
 }
 
-/* 所有按鈕強制居中 */
+/* 所有按鈕強制左右居中 */
 .stButton, div[data-testid="stButton"] {
     display: flex !important;
     justify-content: center !important;
@@ -319,17 +318,17 @@ if "audio_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 5. 狀態機主程式 (保證獨立頁面跳轉)
+# 5. 狀態機主程式 (實現自動跳轉、左右置中、獨立 Loading)
 # ---------------------------------------------------------
 def main():
     inject_global_features()
 
     # =========================================================
-    # 獨立頁面 1：Chapter 1（拖放/點擊上傳圖片）
+    # 獨立頁面 1：Chapter 1（拖放/點擊上傳圖片，上傳即自動跳轉）
     # =========================================================
     if st.session_state.page == "ch1":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
         st.progress(0.25)
 
         st.markdown("""
@@ -341,7 +340,6 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # 支援 Drag & Drop 與 按鈕上傳
         uploaded_file = st.file_uploader(
             "🌟 Drag and drop your image here, or click to browse:",
             type=["png", "jpg", "jpeg"],
@@ -350,11 +348,9 @@ def main():
 
         if uploaded_file is not None:
             st.session_state.uploaded_img = Image.open(uploaded_file).convert("RGB")
-            st.image(st.session_state.uploaded_img, caption="Your Enchanted Picture", use_container_width=True)
-
-            if st.button("🪄 Awaken the Magic Mirror 🪄"):
-                st.session_state.page = "load1"
-                st.rerun()
+            # 上傳後自動切換至獨立 Loading 頁面，不需手動按鈕
+            st.session_state.page = "load1"
+            st.rerun()
 
     # =========================================================
     # 獨立頁面 2：Loading 1（完全獨立的魔鏡施法頁面）
@@ -375,7 +371,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch2":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
         st.progress(0.50)
         st.balloons()
 
@@ -404,7 +400,7 @@ def main():
             st.rerun()
 
     # =========================================================
-    # 獨立頁面 4：Loading 2（完全獨立的故事編織頁面）
+    # 獨立頁面 4：Loading 2（完全獨立、分離的獨立施法頁面）
     # =========================================================
     elif st.session_state.page == "load2":
         render_loading_page(
@@ -418,11 +414,11 @@ def main():
         st.rerun()
 
     # =========================================================
-    # 獨立頁面 5：Chapter 3（故事卷軸）
+    # 獨立頁面 5：Chapter 3（故事卷軸，按鈕左右置中）
     # =========================================================
     elif st.session_state.page == "ch3":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
         st.progress(0.75)
         st.snow()
 
@@ -444,6 +440,7 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
+        # 左右分中對齊的按鈕
         if st.button("🎶 Enter Voice Studio 🎶"):
             st.session_state.page = "load3"
             st.rerun()
@@ -466,7 +463,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch4":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
         st.progress(1.0)
         st.balloons()
 
