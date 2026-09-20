@@ -8,7 +8,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 import torch
-from transformers import BlipProcessor, BlipForConditionalGeneration, pipeline
+from transformers import (
+    BlipProcessor, 
+    BlipForConditionalGeneration, 
+    AutoTokenizer, 
+    AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM
+)
 from gtts import gTTS
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 
@@ -36,7 +42,7 @@ def scroll_to_top():
             }
             doScroll();
             setTimeout(doScroll, 80);
-            setTimeout(doScroll, 300);
+            setTimeout(doScroll, 250);
         </script>
         """,
         height=0
@@ -154,34 +160,40 @@ div.stButton > button:hover {
 
 
 # ---------------------------------------------------------
-# 1. Hugging Face Transformers Initialization
+# 1. Direct Model Loaders (Zero Pipeline String Task Calls)
 # ---------------------------------------------------------
 @st.cache_resource(show_spinner=False)
-def load_core_models():
-    """
-    Direct model loading to avoid registry task KeyError:
-      - BLIP for Image Captioning
-      - DistilGPT-2 for Story Generation
-      - FLAN-T5 for Reading Chapters 1-4 Content and synthesizing scene prompts
-    """
-    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-    caption_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-    story_model = pipeline("text-generation", model="distilbert/distilgpt2")
-    reader_transformer = pipeline("text2text-generation", model="google/flan-t5-small")
-    return processor, caption_model, story_model, reader_transformer
+def load_caption_model():
+    proc = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    return proc, model
+
+@st.cache_resource(show_spinner=False)
+def load_story_model():
+    tok = AutoTokenizer.from_pretrained("distilbert/distilgpt2")
+    model = AutoModelForCausalLM.from_pretrained("distilbert/distilgpt2")
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
+    return tok, model
+
+@st.cache_resource(show_spinner=False)
+def load_reader_model():
+    tok = AutoTokenizer.from_pretrained("google/flan-t5-small")
+    model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
+    return tok, model
 
 
 # ---------------------------------------------------------
-# 2. Pipeline Helpers (Chapters 1-4)
+# 2. Inference Functions
 # ---------------------------------------------------------
-def get_caption(image, processor, caption_model):
-    inputs = processor(images=image, return_tensors="pt")
+def get_caption(image, proc, model):
+    inputs = proc(images=image, return_tensors="pt")
     with torch.no_grad():
-        out = caption_model.generate(**inputs, max_new_tokens=40)
-    return processor.decode(out[0], skip_special_tokens=True)
+        out = model.generate(**inputs, max_new_tokens=40)
+    return proc.decode(out[0], skip_special_tokens=True)
 
 
-def get_story(caption, story_pipe):
+def get_story(caption, tok, model):
     clean_caption = caption.strip().rstrip(".")
     prompt = (
         f"Once upon a time, there was {clean_caption}. "
@@ -190,17 +202,20 @@ def get_story(caption, story_pipe):
         f"With wide curious eyes, our brave little friend stepped inside to explore. "
         f"Everyone celebrated and smiled happily ever after!"
     )
-    output = story_pipe(
-        prompt,
-        min_new_tokens=50,
-        max_new_tokens=85,
-        do_sample=True,
-        temperature=0.8,
-        top_k=50,
-        top_p=0.9,
-        repetition_penalty=1.3
-    )
-    raw = output[0]["generated_text"]
+    inputs = tok(prompt, return_tensors="pt")
+    with torch.no_grad():
+        out = model.generate(
+            **inputs,
+            min_new_tokens=50,
+            max_new_tokens=85,
+            do_sample=True,
+            temperature=0.8,
+            top_k=50,
+            top_p=0.9,
+            repetition_penalty=1.3,
+            pad_token_id=tok.eos_token_id
+        )
+    raw = tok.decode(out[0], skip_special_tokens=True)
     last_period = max(raw.rfind("."), raw.rfind("!"), raw.rfind("?"))
     if last_period != -1:
         story = raw[:last_period + 1]
@@ -215,29 +230,19 @@ def text_to_speech(text, filename="story_full.mp3"):
     return filename
 
 
-# ---------------------------------------------------------
-# 3. Chapter 5 Transformers: Read Ch1-4 & Generate Illustrations
-# ---------------------------------------------------------
-def analyze_content_with_transformer(reader_pipe, caption, story_sentence):
-    """
-    Uses the FLAN-T5 transformer to read Chapters 1-4 context
-    and synthesize an art scene description.
-    """
+def analyze_with_flan(flan_tok, flan_model, caption, story_sentence):
     input_text = (
-        f"Context: In Chapter 1 and 2, we discovered {caption}. "
-        f"In Chapter 3 and 4, the narrative says: '{story_sentence}'. "
-        f"Task: Describe a single visual fairytale illustration for this moment in 5 words."
+        f"Context: Image shows {caption}. Story part: '{story_sentence}'. "
+        f"Generate a short 4-word fairytale setting:"
     )
-    res = reader_pipe(input_text, max_new_tokens=25)
-    visual_idea = res[0]["generated_text"].strip()
+    inputs = flan_tok(input_text, return_tensors="pt")
+    with torch.no_grad():
+        outputs = flan_model.generate(**inputs, max_new_tokens=20)
+    visual_idea = flan_tok.decode(outputs[0], skip_special_tokens=True).strip()
     return f"children fairytale book illustration of {visual_idea}, storybook watercolor art, cute, vibrant, warm lighting"
 
 
 def generate_fairytale_illustration_hf(prompt, fallback_img_path):
-    """
-    Calls Hugging Face Diffusion API to synthesize an illustration.
-    Falls back gracefully to the original picture if offline or without a token.
-    """
     hf_token = st.secrets.get("HF_TOKEN", os.environ.get("HF_TOKEN", ""))
     headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
     api_url = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
@@ -255,12 +260,11 @@ def generate_fairytale_illustration_hf(prompt, fallback_img_path):
         except Exception:
             pass
 
-    # Fallback to local source image
     return Image.open(fallback_img_path).convert("RGB")
 
 
 # ---------------------------------------------------------
-# 4. Fairytale Book Page Renderer & Flip Video Generator
+# 3. Fairytale Book Page & Flip Video Assembly
 # ---------------------------------------------------------
 def wrap_text(text, font, max_width, draw):
     words = text.split()
@@ -283,12 +287,10 @@ def render_fairytale_book_page(illustration, sentence, page_num, total_pages, ou
     page = Image.new("RGB", (width, height), color="#FFFDF7")
     draw = ImageDraw.Draw(page)
 
-    # Double fairytale pink and gold borders
     draw.rectangle([25, 25, width - 25, height - 25], outline="#FF758F", width=6)
     draw.rectangle([38, 38, width - 38, height - 38], outline="#FFD166", width=2)
     draw.rectangle([48, 48, width - 48, height - 48], outline="#FFB3C6", width=1)
 
-    # Paste transformer-generated illustration centered
     try:
         ill_copy = illustration.copy()
         ill_copy.thumbnail((620, 420))
@@ -323,7 +325,7 @@ def render_fairytale_book_page(illustration, sentence, page_num, total_pages, ou
     return out_path
 
 
-def make_fairytale_flip_video(fallback_img_path, caption, story_text, reader_pipe, output_path="storybook_movie.mp4"):
+def make_fairytale_flip_video(fallback_img_path, caption, story_text, flan_tok, flan_model, output_path="storybook_movie.mp4"):
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', story_text) if len(s.strip()) > 3]
     if not sentences:
         sentences = [story_text]
@@ -334,18 +336,13 @@ def make_fairytale_flip_video(fallback_img_path, caption, story_text, reader_pip
     temp_files = []
 
     for idx, sentence in enumerate(sentences, start=1):
-        # 1. Transformer reads Ch1-4 narrative and generates scene prompt
-        scene_prompt = analyze_content_with_transformer(reader_pipe, caption, sentence)
-        
-        # 2. Diffusion Transformer synthesizes illustration
+        scene_prompt = analyze_with_flan(flan_tok, flan_model, caption, sentence)
         page_illustration = generate_fairytale_illustration_hf(scene_prompt, fallback_img_path)
 
-        # 3. Render fairytale storybook page
         page_img_path = f"temp_flip_page_{idx}.png"
         render_fairytale_book_page(page_illustration, sentence, idx, total_pages, page_img_path)
         temp_files.append(page_img_path)
 
-        # 4. Generate synchronized voiceover
         page_audio_path = f"temp_flip_audio_{idx}.mp3"
         tts = gTTS(text=sentence, lang="en", slow=False)
         tts.save(page_audio_path)
@@ -382,7 +379,7 @@ def make_fairytale_flip_video(fallback_img_path, caption, story_text, reader_pip
 
 
 # ---------------------------------------------------------
-# 5. Riddles
+# 4. Interactive Riddles
 # ---------------------------------------------------------
 RIDDLES = [
     ("🧙‍♂️ 'What has hands but cannot clap?'", "A clock! ⏰"),
@@ -394,10 +391,10 @@ RIDDLES = [
 
 
 # ---------------------------------------------------------
-# 6. Session State
+# 5. State Management
 # ---------------------------------------------------------
 if "step" not in st.session_state:
-    st.session_state.step = 1
+    st.session_state.step = "ch1"
 if "uploaded_img" not in st.session_state:
     st.session_state.uploaded_img = None
 if "caption" not in st.session_state:
@@ -411,19 +408,19 @@ if "video_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 7. Main Application Flow
+# 6. Main Application Workflow (One Page per Step & Loading)
 # ---------------------------------------------------------
 def main():
     scroll_to_top()
     st.markdown('<div id="top-anchor"></div>', unsafe_allow_html=True)
     st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
 
-    # -----------------------------------------------------
-    # CHAPTER 1: Image Upload
-    # -----------------------------------------------------
-    if st.session_state.step == 1:
+    # =====================================================
+    # CHAPTER 1: Image Upload Page
+    # =====================================================
+    if st.session_state.step == "ch1":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
-        st.progress(0.2)
+        st.progress(0.1)
 
         st.markdown("""
         <div class="magic-parchment">
@@ -444,13 +441,13 @@ def main():
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
                 if st.button("🪄 Awaken the Magic Mirror 🪄"):
-                    st.session_state.step = "loading_mirror"
+                    st.session_state.step = "load1"
                     st.rerun()
 
-    # -----------------------------------------------------
-    # LOADING SCREEN 1: Mirror Vision (Auto Scroll-to-Top)
-    # -----------------------------------------------------
-    elif st.session_state.step == "loading_mirror":
+    # =====================================================
+    # LOADING PAGE 1 (Mirror Vision)
+    # =====================================================
+    elif st.session_state.step == "load1":
         q, a = random.choice(RIDDLES)
         st.markdown(f"""
         <div class="spell-chamber">
@@ -464,23 +461,23 @@ def main():
                 <p style="font-size: 1.2rem; color: #2b2d42; font-weight: bold;">{q}</p>
                 <p style="color: #ff499e; font-size: 1.05rem;"><i>💨 Breathe with the glowing orb: inhale, exhale, and blow soft magic dust!</i></p>
             </div>
-            <p style="color: #4361ee; font-weight: bold;">🔮 Reading details with vision transformer... 🔮</p>
+            <p style="color: #4361ee; font-weight: bold;">🔮 Analyzing visual clues with BLIP vision transformer... 🔮</p>
         </div>
         """, unsafe_allow_html=True)
 
-        processor, caption_model, _, _ = load_core_models()
-        st.session_state.caption = get_caption(st.session_state.uploaded_img, processor, caption_model)
+        blip_proc, blip_model = load_caption_model()
+        st.session_state.caption = get_caption(st.session_state.uploaded_img, blip_proc, blip_model)
         
         time.sleep(2.0)
-        st.session_state.step = 2
+        st.session_state.step = "ch2"
         st.rerun()
 
-    # -----------------------------------------------------
-    # CHAPTER 2: The Crystal Ball
-    # -----------------------------------------------------
-    elif st.session_state.step == 2:
+    # =====================================================
+    # CHAPTER 2: The Crystal Ball Clue Page
+    # =====================================================
+    elif st.session_state.step == "ch2":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
-        st.progress(0.4)
+        st.progress(0.28)
         st.balloons()
 
         st.markdown("""
@@ -508,13 +505,13 @@ def main():
         _, btn_c, _ = st.columns([1, 2, 1])
         with btn_c:
             if st.button("📜 Weave a Fairytale from This Clue! 📜"):
-                st.session_state.step = "loading_story"
+                st.session_state.step = "load2"
                 st.rerun()
 
-    # -----------------------------------------------------
-    # LOADING SCREEN 2: Story Weaving (Auto Scroll-to-Top)
-    # -----------------------------------------------------
-    elif st.session_state.step == "loading_story":
+    # =====================================================
+    # LOADING PAGE 2 (Story Weaving)
+    # =====================================================
+    elif st.session_state.step == "load2":
         q, a = random.choice(RIDDLES)
         st.markdown(f"""
         <div class="spell-chamber">
@@ -528,23 +525,23 @@ def main():
                 <p style="font-size: 1.2rem; color: #2b2d42; font-weight: bold;">{q}</p>
                 <p style="color: #ff499e; font-size: 1.05rem;"><i>✨ Chant along: "Abracadabra, alakazam, weave a story as fast as you can!" ✨</i></p>
             </div>
-            <p style="color: #4361ee; font-weight: bold;">📖 Crafting a magical adventure... 📖</p>
+            <p style="color: #4361ee; font-weight: bold;">📖 Generating fairytale narrative with text-transformer... 📖</p>
         </div>
         """, unsafe_allow_html=True)
 
-        _, _, story_pipe, _ = load_core_models()
-        st.session_state.story = get_story(st.session_state.caption, story_pipe)
+        gpt_tok, gpt_model = load_story_model()
+        st.session_state.story = get_story(st.session_state.caption, gpt_tok, gpt_model)
         
         time.sleep(2.0)
-        st.session_state.step = 3
+        st.session_state.step = "ch3"
         st.rerun()
 
-    # -----------------------------------------------------
-    # CHAPTER 3: The Golden Story Scroll
-    # -----------------------------------------------------
-    elif st.session_state.step == 3:
+    # =====================================================
+    # CHAPTER 3: Story Scroll Page
+    # =====================================================
+    elif st.session_state.step == "ch3":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
-        st.progress(0.6)
+        st.progress(0.48)
         st.snow()
 
         st.markdown("""
@@ -571,20 +568,38 @@ def main():
         btn_c1, btn_c2 = st.columns([1, 1])
         with btn_c1:
             if st.button("🎶 Proceed to Voice Harp (Chapter 4)"):
-                st.session_state.step = 4
+                st.session_state.step = "load3"
                 st.rerun()
         with btn_c2:
             if st.button("🔄 Try Another Picture"):
-                st.session_state.step = 1
+                st.session_state.step = "ch1"
                 st.session_state.uploaded_img = None
                 st.rerun()
 
-    # -----------------------------------------------------
-    # CHAPTER 4: The Voice Harp
-    # -----------------------------------------------------
-    elif st.session_state.step == 4:
+    # =====================================================
+    # LOADING PAGE 3 (Voice Tuning Chamber)
+    # =====================================================
+    elif st.session_state.step == "load3":
+        st.markdown("""
+        <div class="spell-chamber">
+            <div class="magic-orb">🎶</div>
+            <h2 style="color: #ff477e !important;">Tuning the Fairyland Harp...</h2>
+            <p style="font-size: 1.2rem; color: #6a0572; font-weight: bold;">
+                The singing fairies are warming up their vocal cords to narrate your tale!
+            </p>
+            <p style="color: #4361ee; font-weight: bold;">✨ Preparing magical sound studio... ✨</p>
+        </div>
+        """, unsafe_allow_html=True)
+        time.sleep(1.5)
+        st.session_state.step = "ch4"
+        st.rerun()
+
+    # =====================================================
+    # CHAPTER 4: Voice Harp Page
+    # =====================================================
+    elif st.session_state.step == "ch4":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
-        st.progress(0.8)
+        st.progress(0.68)
 
         st.markdown("""
         <div class="magic-parchment">
@@ -604,8 +619,7 @@ def main():
             if not st.session_state.audio_path or not os.path.exists(st.session_state.audio_path):
                 st.markdown("<p style='text-align:center;'>Click below to summon the fairy narrator!</p>", unsafe_allow_html=True)
                 if st.button("🧚 Cast Voice Spell"):
-                    with st.spinner("Recording fairy voice..."):
-                        st.session_state.audio_path = text_to_speech(st.session_state.story)
+                    st.session_state.step = "load4"
                     st.rerun()
             else:
                 st.success("✨ Fairy Audio Narrated Successfully!")
@@ -624,44 +638,120 @@ def main():
         if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
             btn_c1, btn_c2 = st.columns([1, 1])
             with btn_c1:
-                if st.button("🎬 Generate Flip Storybook Movie (Chapter 5)"):
-                    st.session_state.step = 5
+                if st.button("🎬 Proceed to Living Story Cinema (Chapter 5)"):
+                    st.session_state.step = "ch5"
                     st.rerun()
             with btn_c2:
                 if st.button("📜 Back to Story Scroll"):
-                    st.session_state.step = 3
+                    st.session_state.step = "ch3"
                     st.rerun()
 
-    # -----------------------------------------------------
-    # CHAPTER 5: Multimodal Fairytale Flip Storybook Video (<30s)
-    # -----------------------------------------------------
-    elif st.session_state.step == 5:
-        st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 5: The Fairytale Flip Storybook</p>", unsafe_allow_html=True)
+    # =====================================================
+    # LOADING PAGE 4 (Voice Synthesis)
+    # =====================================================
+    elif st.session_state.step == "load4":
+        st.markdown("""
+        <div class="spell-chamber">
+            <div class="magic-orb">🎙️</div>
+            <h2 style="color: #ff477e !important;">Recording the Fairy Narration...</h2>
+            <p style="font-size: 1.2rem; color: #6a0572; font-weight: bold;">
+                Sprinkling vocal dust and recording the story audio...
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.session_state.audio_path = text_to_speech(st.session_state.story)
+        time.sleep(1.5)
+        st.session_state.step = "ch4"
+        st.rerun()
+
+    # =====================================================
+    # CHAPTER 5: Multimodal Concept & Binding Prompt Page
+    # =====================================================
+    elif st.session_state.step == "ch5":
+        st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 5: The Storybook Studio</p>", unsafe_allow_html=True)
+        st.progress(0.85)
+
+        st.markdown("""
+        <div class="magic-parchment">
+            <h2>🎬 Chapter 5: The Storybook Studio</h2>
+            <p style="font-size: 1.15rem; text-align: center;">
+                Our Hugging Face Transformers will now read the accumulated content from Chapters 1–4, generate fairytale scene art for each sentence, and bind everything into an animated flip-book movie!
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.session_state.uploaded_img:
+                st.image(st.session_state.uploaded_img, caption="Original Input Scene", use_container_width=True)
+        with col2:
+            st.markdown(f"""
+            <div style="background: rgba(255, 255, 255, 0.9); padding: 1.2rem; border-radius: 18px; border: 2px dashed #ffb3c6;">
+                <p><strong>Clue:</strong> {st.session_state.caption.capitalize()}</p>
+                <p><strong>Narration:</strong> Ready in audio format</p>
+                <p><strong>Ready to synthesize:</strong> Multi-page illustrated flip storybook (&lt;30s)</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.write("")
+        _, btn_c, _ = st.columns([1, 2, 1])
+        with btn_c:
+            if st.button("✨ Bind & Animate Fairytale Storybook ✨"):
+                st.session_state.step = "load5"
+                st.rerun()
+
+    # =====================================================
+    # LOADING PAGE 5 (Transformer Reading & Video Rendering)
+    # =====================================================
+    elif st.session_state.step == "load5":
+        q, a = random.choice(RIDDLES)
+        st.markdown(f"""
+        <div class="spell-chamber">
+            <div class="magic-orb">📚</div>
+            <h2 style="color: #ff477e !important;">Binding Your Animated Storybook...</h2>
+            <p style="font-size: 1.2rem; color: #6a0572; font-weight: bold;">
+                Transformers are reading Chapters 1–4, synthesizing illustrated pages, and stitching the audio!
+            </p>
+            <div style="background: rgba(255,255,255,0.85); border-radius: 20px; padding: 1.2rem; margin: 1.2rem 0; border: 2px dashed #ffb3c6;">
+                <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Final Fairy Riddle!</h3>
+                <p style="font-size: 1.2rem; color: #2b2d42; font-weight: bold;">{q}</p>
+            </div>
+            <p style="color: #4361ee; font-weight: bold;">🎬 Rendering 30-second flip-book video reel... 🎬</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        flan_tok, flan_model = load_reader_model()
+        video_file = make_fairytale_flip_video(
+            "temp_input_scene.png",
+            st.session_state.caption,
+            st.session_state.story,
+            flan_tok,
+            flan_model
+        )
+        st.session_state.video_path = video_file
+        
+        st.session_state.step = "final"
+        st.rerun()
+
+    # =====================================================
+    # FINAL RESULT PAGE: Animated Storybook Video (<30s)
+    # =====================================================
+    elif st.session_state.step == "final":
+        st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Final Result: Your Fairytale Storybook</p>", unsafe_allow_html=True)
         st.progress(1.0)
         st.balloons()
 
         st.markdown("""
         <div class="magic-parchment">
-            <h2>🎬 Chapter 5: The Fairytale Flip Storybook</h2>
+            <h2>🎬 Your Living Fairytale Flip Storybook</h2>
             <p style="font-size: 1.15rem; text-align: center;">
-                Our transformers have read Chapters 1–4, generated relevant fairytale illustrations, and compiled an animated flip storybook under 30 seconds!
+                Here is your animated picture book! Each page has been illustrated and narrated, auto-flipping sentence-by-sentence under 30 seconds!
             </p>
         </div>
         """, unsafe_allow_html=True)
 
-        if not st.session_state.video_path or not os.path.exists(st.session_state.video_path):
-            with st.spinner("🧙‍♂️ Transformers analyzing Chapters 1-4, synthesizing fairytale illustrations, and rendering flip video..."):
-                _, _, _, reader_pipe = load_core_models()
-                video_file = make_fairytale_flip_video(
-                    "temp_input_scene.png",
-                    st.session_state.caption,
-                    st.session_state.story,
-                    reader_pipe
-                )
-                st.session_state.video_path = video_file
-                st.rerun()
-
-        st.video(st.session_state.video_path)
+        if st.session_state.video_path and os.path.exists(st.session_state.video_path):
+            st.video(st.session_state.video_path)
 
         st.write("")
         _, btn_c, _ = st.columns([1, 2, 1])
@@ -673,7 +763,7 @@ def main():
                             os.remove(f)
                         except Exception:
                             pass
-                st.session_state.step = 1
+                st.session_state.step = "ch1"
                 st.session_state.uploaded_img = None
                 st.session_state.caption = ""
                 st.session_state.story = ""
