@@ -14,16 +14,16 @@ from transformers import (
 )
 from gtts import gTTS
 
-# 開啟多執行緒加速純 CPU 運算
+# Enable multi-threading for fast CPU inference
 torch.set_num_threads(4)
 
 # ---------------------------------------------------------
-# 1. 頁面配置與全局樣式 (完美按鈕左右置中、明亮上傳區)
+# 1. Page Configuration & Global Styling
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
 def inject_global_features():
-    """無感啟動 BGM 與每次切換平滑置頂"""
+    """Autoplay fairy BGM and smooth scroll to top on reruns"""
     components.html(
         """
         <audio id="bgm" loop autoplay>
@@ -37,11 +37,11 @@ def inject_global_features():
             var bgm = document.getElementById("bgm");
             if (bgm) {
                 bgm.volume = 0.15;
-                bgm.play().catch(e => console.log("等待互動解鎖 BGM..."));
+                bgm.play().catch(e => console.log("Waiting for user interaction to unlock BGM..."));
             }
             window.parent.document.body.addEventListener('click', function() {
                 if (bgm && bgm.paused) {
-                    bgm.play().catch(e => console.log("BGM 播放中..."));
+                    bgm.play().catch(e => console.log("BGM playing..."));
                 }
             }, { once: true });
         </script>
@@ -50,7 +50,7 @@ def inject_global_features():
     )
 
 def play_fairy_magic_sfx():
-    """仙子魔法棒晶亮叮鈴聲"""
+    """Fairy magic wand chime sound effect"""
     components.html(
         """
         <audio autoplay>
@@ -64,14 +64,14 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700;800&family=Cinzel+Decorative:wght@700&display=swap');
 
-/* 全域背景 */
+/* Global Background */
 [data-testid="stAppViewContainer"], [data-testid="stHeader"], .stApp {
     background: radial-gradient(circle at 20% 20%, #ffe5ec 0%, #ffcbf2 30%, #e8dff5 55%, #caffbf 85%, #9bf6ff 100%) !important;
     background-attachment: fixed !important;
     font-family: 'Quicksand', sans-serif !important;
 }
 
-/* 標題與文字高對比度優化 */
+/* Titles & Headings */
 h1 {
     font-family: 'Cinzel Decorative', cursive !important;
     color: #d81159 !important;
@@ -95,7 +95,7 @@ p, span, label, div {
     font-weight: 600;
 }
 
-/* 內容卡片 */
+/* Parchment Card Container */
 .magic-parchment {
     background: rgba(255, 255, 255, 0.96) !important;
     backdrop-filter: blur(12px);
@@ -107,7 +107,7 @@ p, span, label, div {
 }
 
 /* ---------------------------------------------------------
-   修正上傳區黑色背景問題 (強效覆蓋為明亮粉白)
+   Bright File Uploader Styling (Fixing dark background)
    --------------------------------------------------------- */
 [data-testid="stFileUploader"], section[data-testid="stFileUploader"] {
     background: transparent !important;
@@ -139,7 +139,7 @@ p, span, label, div {
     box-shadow: 0 4px 15px rgba(255, 73, 158, 0.4) !important;
 }
 
-/* 獨立施法 Loading 頁面卡片 */
+/* Independent Loading Spell Chamber */
 .spell-chamber {
     background: #ffffff !important;
     border: 4px solid #ff477e !important;
@@ -151,7 +151,7 @@ p, span, label, div {
     max-width: 650px !important;
 }
 
-/* 可愛彈跳 Loading 動畫 */
+/* Cute Bouncing Loader Animation */
 .cute-loader {
     display: flex;
     justify-content: center;
@@ -171,9 +171,7 @@ p, span, label, div {
     100% { transform: translateY(-30px) scale(1.15); }
 }
 
-/* ---------------------------------------------------------
-   完美左右置中對齊定位 (Button Center-Aligned)
-   --------------------------------------------------------- */
+/* Perfect Center-Aligned Buttons */
 .stButton {
     display: flex !important;
     justify-content: center !important;
@@ -206,7 +204,7 @@ div[data-testid="stButton"] > button:hover {
     box-shadow: 0 12px 30px rgba(255, 71, 126, 0.6) !important;
 }
 
-/* 提升 Chapter 4 成功提示框亮度 */
+/* Success Box Styling */
 .success-box {
     background: #e6ffed !important;
     border: 2px solid #28a745 !important;
@@ -224,7 +222,7 @@ div[data-testid="stButton"] > button:hover {
 
 
 # ---------------------------------------------------------
-# 2. 獨立 Loading 畫面渲染器
+# 2. Independent Loading Page Renderer
 # ---------------------------------------------------------
 def render_loading_page(title, desc):
     play_fairy_magic_sfx()
@@ -249,7 +247,7 @@ def render_loading_page(title, desc):
 
 
 # ---------------------------------------------------------
-# 3. 極速 Transformer 模型與推論
+# 3. Fast Transformer Models & Inference
 # ---------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_caption_model():
@@ -298,7 +296,7 @@ def get_story_fast(caption, tok, model):
         )
     raw = tok.decode(out[0], skip_special_tokens=True)
     
-    # 嚴格限制：只允許英文字母、數字、標點符號與空格，過濾所有中文或特殊亂碼
+    # Strict English text filtering
     clean_text = re.sub(r'[^a-zA-Z0-9\s.,!?-]', '', raw).strip()
     
     last_period = max(clean_text.rfind("."), clean_text.rfind("!"), clean_text.rfind("?"))
@@ -315,7 +313,7 @@ def text_to_speech(text, filename="story_audio.mp3"):
 
 
 # ---------------------------------------------------------
-# 4. 狀態管理
+# 4. State Management
 # ---------------------------------------------------------
 if "page" not in st.session_state:
     st.session_state.page = "ch1"
@@ -330,30 +328,30 @@ if "audio_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 5. 狀態機主程式 (保證獨立跳轉與流暢體驗)
+# 5. Main Application State Machine
 # ---------------------------------------------------------
 def main():
     inject_global_features()
 
     # =========================================================
-    # 獨立頁面 1：Chapter 1（拖放/點擊上傳，上傳即自動跳轉）
+    # Chapter 1: The Magic Corner & Awakening the Magic Mirror
     # =========================================================
     if st.session_state.page == "ch1":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 1: The Magic Corner</p>", unsafe_allow_html=True)
         st.progress(0.25)
 
         st.markdown("""
         <div class="magic-parchment">
-            <h2>🔮 Chapter 1: The Magic Portal</h2>
+            <h2>🔮 Chapter 1: The Magic Corner</h2>
             <p style="font-size: 1.2rem; text-align: center; color: #1d2129 !important;">
-                Drag & Drop or browse a picture of a cute pet, toy, or drawing!
+                Welcome to the Magic Corner! Upload your magical picture here to awaken the Magic Mirror.
             </p>
         </div>
         """, unsafe_allow_html=True)
 
         uploaded_file = st.file_uploader(
-            "🌟 Drag and drop your image here, or click to browse:",
+            "🌟 Drag & Drop or Browse your magical picture here:",
             type=["png", "jpg", "jpeg"],
             help="Choose a magical photo for your fairytale!",
             key="magic_uploader"
@@ -365,12 +363,12 @@ def main():
             st.rerun()
 
     # =========================================================
-    # 獨立頁面 2：Loading 1（完全獨立的魔鏡施法頁面）
+    # Loading 1: Awakening the Magic Mirror
     # =========================================================
     elif st.session_state.page == "load1":
         render_loading_page(
-            "Awakening the Mirror...", 
-            "The fairies are casting an enchantment over your picture!"
+            "Awakening the Magic Mirror...", 
+            "The Magic Mirror is waking up to gaze deep into your picture!"
         )
         proc, model = load_caption_model()
         st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
@@ -378,29 +376,29 @@ def main():
         st.rerun()
 
     # =========================================================
-    # 獨立頁面 3：Chapter 2（水晶球線索）
+    # Chapter 2: The Magic Mirror Sees...
     # =========================================================
     elif st.session_state.page == "ch2":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 2: The Magic Mirror</p>", unsafe_allow_html=True)
         st.progress(0.50)
         st.balloons()
         time.sleep(1.2)
 
         st.markdown("""
         <div class="magic-parchment">
-            <h2>🔮 Chapter 2: The Crystal Ball Speaks!</h2>
-            <p style="font-size: 1.2rem; text-align: center; color: #1d2129 !important;">Here is the secret clue discovered from your picture:</p>
+            <h2>🔮 Chapter 2: The Magic Mirror Speaks!</h2>
+            <p style="font-size: 1.2rem; text-align: center; color: #1d2129 !important;">The Magic Mirror sees its sacred vision:</p>
         </div>
         """, unsafe_allow_html=True)
 
         col1, col2 = st.columns([1, 1])
         with col1:
-            st.image(st.session_state.uploaded_img, caption="Your Clue", use_container_width=True)
+            st.image(st.session_state.uploaded_img, caption="Your Enchanted Picture", use_container_width=True)
         with col2:
             st.markdown(f"""
             <div style="background: #ffffff; padding: 1.6rem; border-radius: 20px; border: 3px solid #70d6ff; text-align: center; margin-top: 1rem; box-shadow: 0 4px 15px rgba(112, 214, 255, 0.3);">
-                <h3 style="color: #4a0e4e !important; margin: 0;">✨ Mirror Revelation:</h3>
+                <h3 style="color: #4a0e4e !important; margin: 0;">✨ The Magic Mirror Sees:</h3>
                 <p style="font-size: 1.35rem; font-weight: 800; color: #d81159 !important; margin-top: 0.8rem;">
                     "{st.session_state.caption.capitalize()}"
                 </p>
@@ -412,12 +410,12 @@ def main():
             st.rerun()
 
     # =========================================================
-    # 獨立頁面 4：Loading 2（完全獨立的故事編織頁面）
+    # Loading 2: Weaving the Golden Scroll
     # =========================================================
     elif st.session_state.page == "load2":
         render_loading_page(
             "Weaving Golden Threads...", 
-            "The royal elves are dipping quills into starlight ink!"
+            "The royal elves are spinning the mirror's vision into a tale!"
         )
         tok, model = load_story_model()
         st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
@@ -425,7 +423,7 @@ def main():
         st.rerun()
 
     # =========================================================
-    # 獨立頁面 5：Chapter 3（故事卷軸）
+    # Chapter 3: The Golden Scroll
     # =========================================================
     elif st.session_state.page == "ch3":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
@@ -457,23 +455,20 @@ def main():
             st.rerun()
 
     # =========================================================
-    # 獨立頁面 6：Loading 3（完全獨立的豎琴調音頁面）
+    # Loading 3: Tuning the Voice Harp
     # =========================================================
     elif st.session_state.page == "load3":
         render_loading_page(
-            "Tuning the Fairyland Harp...", 
-            "The singing fairies are warming up their vocal cords!"
+            "Tuning the Voice Harp...", 
+            "The singing fairies are preparing to whisper the tale aloud!"
         )
         st.session_state.audio_path = text_to_speech(st.session_state.story)
         st.session_state.page = "ch4"
         st.rerun()
 
     # =========================================================
-    # 獨立頁面 7：Chapter 4（聲音播送與最終成果）
+    # Chapter 4: The Voice Harp Whispering
     # =========================================================
-    elif st.session_state.page == "load4": # 預留
-        pass
-
     elif st.session_state.page == "ch4":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
@@ -485,7 +480,7 @@ def main():
         <div class="magic-parchment">
             <h2>🎶 Chapter 4: The Voice Harp</h2>
             <p style="font-size: 1.2rem; text-align: center; color: #1d2129 !important;">
-                Listen to the fairy narrator recite your custom bedtime story!
+                Listen closely as the fairy narrator whispers your custom bedtime story!
             </p>
         </div>
         """, unsafe_allow_html=True)
