@@ -50,7 +50,7 @@ def inject_global_features():
     )
 
 def play_fairy_magic_sfx():
-    """Fairy magic wand chime sound effect"""
+    """Live Fairy magic wand chime sound effect"""
     components.html(
         """
         <audio autoplay>
@@ -106,9 +106,7 @@ p, span, label, div {
     margin: 1.2rem 0 !important;
 }
 
-/* ---------------------------------------------------------
-   Bright File Uploader Styling (Fixing dark background)
-   --------------------------------------------------------- */
+/* Bright File Uploader Styling */
 [data-testid="stFileUploader"], section[data-testid="stFileUploader"] {
     background: transparent !important;
 }
@@ -171,20 +169,7 @@ p, span, label, div {
     100% { transform: translateY(-30px) scale(1.15); }
 }
 
-/* Perfect Center-Aligned Buttons */
-.stButton {
-    display: flex !important;
-    justify-content: center !important;
-    width: 100% !important;
-}
-
-div[data-testid="stButton"] {
-    display: flex !important;
-    justify-content: center !important;
-    margin: 1.5rem auto !important;
-    width: 100% !important;
-}
-
+/* Button Styling */
 div[data-testid="stButton"] > button {
     background: linear-gradient(135deg, #ff477e 0%, #ff70a6 50%, #70d6ff 100%) !important;
     color: #ffffff !important;
@@ -195,7 +180,7 @@ div[data-testid="stButton"] > button {
     border: 3px solid #ffffff !important;
     box-shadow: 0 8px 25px rgba(255, 71, 126, 0.45) !important;
     transition: all 0.25s ease-in-out !important;
-    margin: 0 auto !important;
+    margin: 1.5rem auto !important;
     display: block !important;
 }
 
@@ -358,6 +343,7 @@ def main():
         )
 
         if uploaded_file is not None:
+            play_fairy_magic_sfx()
             st.session_state.uploaded_img = Image.open(uploaded_file).convert("RGB")
             st.session_state.page = "load1"
             st.rerun()
@@ -405,9 +391,13 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        if st.button("📜 Weave a Fairytale 📜"):
-            st.session_state.page = "load2"
-            st.rerun()
+        # 使用 st.columns 確保按鈕 100% 左右置中
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("📜 Weave a Fairytale 📜"):
+                play_fairy_magic_sfx()
+                st.session_state.page = "load2"
+                st.rerun()
 
     # =========================================================
     # Loading 2: Weaving the Golden Scroll
@@ -450,9 +440,13 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        if st.button("🎶 Enter Voice Studio 🎶"):
-            st.session_state.page = "load3"
-            st.rerun()
+        # 使用 st.columns 確保按鈕 100% 左右置中
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("🎶 Enter Voice Studio 🎶"):
+                play_fairy_magic_sfx()
+                st.session_state.page = "load3"
+                st.rerun()
 
     # =========================================================
     # Loading 3: Tuning the Voice Harp
@@ -503,16 +497,20 @@ def main():
         """, unsafe_allow_html=True)
 
         st.write("")
-        if st.button("🏰 Create New Fairytale"):
-            if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
-                try: os.remove(st.session_state.audio_path)
-                except: pass
-            st.session_state.page = "ch1"
-            st.session_state.uploaded_img = None
-            st.session_state.caption = ""
-            st.session_state.story = ""
-            st.session_state.audio_path = ""
-            st.rerun()
+        # 使用 st.columns 確保按鈕 100% 左右置中
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("🏰 Create New Fairytale"):
+                play_fairy_magic_sfx()
+                if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
+                    try: os.remove(st.session_state.audio_path)
+                    except: pass
+                st.session_state.page = "ch1"
+                st.session_state.uploaded_img = None
+                st.session_state.caption = ""
+                st.session_state.story = ""
+                st.session_state.audio_path = ""
+                st.rerun()
 
 if __name__ == "__main__":
     main()
