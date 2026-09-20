@@ -1,6 +1,7 @@
 import os
 import re
 import random
+import time
 import streamlit as st
 import streamlit.components.v1 as components
 from PIL import Image
@@ -17,7 +18,7 @@ from gtts import gTTS
 torch.set_num_threads(4)
 
 # ---------------------------------------------------------
-# 1. 頁面配置與全局樣式 (修復上傳區黑色底色、單行標題、按鈕置中)
+# 1. 頁面配置與全局樣式 (完美解決上傳區黑色、按鈕置中、高對比)
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
@@ -36,7 +37,7 @@ def inject_global_features():
             var bgm = document.getElementById("bgm");
             if (bgm) {
                 bgm.volume = 0.15;
-                bgm.play().catch(e => console.log("等待使用者互動解鎖 BGM..."));
+                bgm.play().catch(e => console.log("等待互動解鎖 BGM..."));
             }
             window.parent.document.body.addEventListener('click', function() {
                 if (bgm && bgm.paused) {
@@ -70,7 +71,7 @@ st.markdown("""
     font-family: 'Quicksand', sans-serif !important;
 }
 
-/* 標題強制單行顯示 (Title in one line) 避免折行 */
+/* 標題與文字高對比度優化 */
 h1 {
     font-family: 'Cinzel Decorative', cursive !important;
     color: #d81159 !important;
@@ -79,8 +80,6 @@ h1 {
     font-size: 2rem !important;
     font-weight: 800 !important;
     white-space: nowrap !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 h2, h3 {
@@ -108,30 +107,24 @@ p, span, label, div {
 }
 
 /* ---------------------------------------------------------
-   獨角獸風格 Drag & Drop 檔案上傳區美化 (徹底覆蓋黑色預設底色)
+   徹底修正上傳區黑色背景問題 (強效覆蓋)
    --------------------------------------------------------- */
-[data-testid="stFileUploader"] {
+[data-testid="stFileUploader"], section[data-testid="stFileUploader"] {
     background: transparent !important;
 }
 
-[data-testid="stFileUploadDropzone"] {
+[data-testid="stFileUploadDropzone"], div[data-testid="stFileUploadDropzone"] {
     background: radial-gradient(circle at 50% 50%, #ffffff 0%, #fff0f5 100%) !important;
     border: 3px dashed #ff758f !important;
     border-radius: 24px !important;
     padding: 2.2rem 1.5rem !important;
     box-shadow: 0 10px 25px rgba(255, 117, 143, 0.25), 0 0 20px rgba(112, 214, 255, 0.2) inset !important;
-    transition: all 0.3s ease-in-out !important;
-}
-
-[data-testid="stFileUploadDropzone"]:hover {
-    border-color: #ff477e !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 14px 30px rgba(255, 71, 126, 0.35), 0 0 25px rgba(112, 214, 255, 0.35) inset !important;
 }
 
 [data-testid="stFileUploadDropzone"] div,
 [data-testid="stFileUploadDropzone"] span,
-[data-testid="stFileUploadDropzone"] small {
+[data-testid="stFileUploadDropzone"] small,
+[data-testid="stFileUploadDropzone"] p {
     color: #4a0e4e !important;
     font-weight: 700 !important;
 }
@@ -178,7 +171,7 @@ p, span, label, div {
     100% { transform: translateY(-30px) scale(1.15); }
 }
 
-/* 所有按鈕強制左右居中 */
+/* 所有按鈕強制左右居中 (Button Center-Aligned) */
 .stButton, div[data-testid="stButton"] {
     display: flex !important;
     justify-content: center !important;
@@ -204,6 +197,20 @@ div[data-testid="stButton"] > button:hover {
     transform: translateY(-3px) scale(1.04) !important;
     box-shadow: 0 12px 30px rgba(255, 71, 126, 0.6) !important;
 }
+
+/* 提升 Chapter 4 成功提示框亮度 */
+.success-box {
+    background: #e6ffed !important;
+    border: 2px solid #28a745 !important;
+    border-radius: 16px !important;
+    padding: 1rem !important;
+    text-align: center !important;
+    color: #155724 !important;
+    font-weight: 800 !important;
+    font-size: 1.1rem !important;
+    margin-bottom: 1rem !important;
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.2) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -211,7 +218,7 @@ div[data-testid="stButton"] > button:hover {
 # ---------------------------------------------------------
 # 2. 獨立 Loading 畫面渲染器
 # ---------------------------------------------------------
-def render_loading_page(title, desc, status_text):
+def render_loading_page(title, desc):
     play_fairy_magic_sfx()
     icons = random.choice([
         ("🦄", "✨", "🧚‍♀️"),
@@ -229,11 +236,6 @@ def render_loading_page(title, desc, status_text):
         <p style="font-size: 1.3rem; color: #4a0e4e !important; font-weight: 800; margin: 1.2rem 0;">
             {desc}
         </p>
-        <div style="background: rgba(255, 245, 248, 0.95); border-radius: 20px; padding: 1.2rem; margin: 1.5rem 0; border: 2px dashed #ff758f;">
-            <p style="font-size: 1.15rem; color: #2b2d42 !important; font-weight: 700; margin: 0;">
-                {status_text}
-            </p>
-        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -287,7 +289,9 @@ def get_story_fast(caption, tok, model):
             pad_token_id=tok.eos_token_id
         )
     raw = tok.decode(out[0], skip_special_tokens=True)
-    clean_text = re.sub(r'[*_#~\[\]`<>=]', '', raw).strip()
+    
+    # 嚴格限制：只允許英文字母、數字、標點符號與空格，過濾所有中文或特殊亂碼
+    clean_text = re.sub(r'[^a-zA-Z0-9\s.,!?-]', '', raw).strip()
     
     last_period = max(clean_text.rfind("."), clean_text.rfind("!"), clean_text.rfind("?"))
     if last_period != -1:
@@ -318,13 +322,13 @@ if "audio_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 5. 狀態機主程式 (實現自動跳轉、左右置中、獨立 Loading)
+# 5. 狀態機主程式 (保證獨立跳轉與流暢體驗)
 # ---------------------------------------------------------
 def main():
     inject_global_features()
 
     # =========================================================
-    # 獨立頁面 1：Chapter 1（拖放/點擊上傳圖片，上傳即自動跳轉）
+    # 獨立頁面 1：Chapter 1（拖放/點擊上傳，上傳即自動跳轉）
     # =========================================================
     if st.session_state.page == "ch1":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
@@ -348,7 +352,6 @@ def main():
 
         if uploaded_file is not None:
             st.session_state.uploaded_img = Image.open(uploaded_file).convert("RGB")
-            # 上傳後自動切換至獨立 Loading 頁面，不需手動按鈕
             st.session_state.page = "load1"
             st.rerun()
 
@@ -358,8 +361,7 @@ def main():
     elif st.session_state.page == "load1":
         render_loading_page(
             "Awakening the Mirror...", 
-            "The fairies are casting an enchantment over your picture!",
-            "🔮 Analyzing visual clues with fast vision transformer... 🔮"
+            "The fairies are casting an enchantment over your picture!"
         )
         proc, model = load_caption_model()
         st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
@@ -374,6 +376,7 @@ def main():
         st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
         st.progress(0.50)
         st.balloons()
+        time.sleep(1.2) # 確保氣球特效完整呈現
 
         st.markdown("""
         <div class="magic-parchment">
@@ -405,8 +408,7 @@ def main():
     elif st.session_state.page == "load2":
         render_loading_page(
             "Weaving Golden Threads...", 
-            "The royal elves are dipping quills into starlight ink!",
-            "📖 Writing your bedtime adventure story... 📖"
+            "The royal elves are dipping quills into starlight ink!"
         )
         tok, model = load_story_model()
         st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
@@ -414,13 +416,14 @@ def main():
         st.rerun()
 
     # =========================================================
-    # 獨立頁面 5：Chapter 3（故事卷軸，按鈕左右置中）
+    # 獨立頁面 5：Chapter 3（故事卷軸）
     # =========================================================
     elif st.session_state.page == "ch3":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
         st.progress(0.75)
         st.snow()
+        time.sleep(1.2) # 確保雪花特效完整呈現
 
         st.markdown("""
         <div class="magic-parchment">
@@ -440,7 +443,6 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        # 左右分中對齊的按鈕
         if st.button("🎶 Enter Voice Studio 🎶"):
             st.session_state.page = "load3"
             st.rerun()
@@ -451,8 +453,7 @@ def main():
     elif st.session_state.page == "load3":
         render_loading_page(
             "Tuning the Fairyland Harp...", 
-            "The singing fairies are warming up their vocal cords!",
-            "🎙️ Synthesizing sweet bedtime voice... 🎙️"
+            "The singing fairies are warming up their vocal cords!"
         )
         st.session_state.audio_path = text_to_speech(st.session_state.story)
         st.session_state.page = "ch4"
@@ -461,11 +462,15 @@ def main():
     # =========================================================
     # 獨立頁面 7：Chapter 4（聲音播送與最終成果）
     # =========================================================
+    elif st.session_state.page == "load4": # 預留
+        pass
+
     elif st.session_state.page == "ch4":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
         st.progress(1.0)
         st.balloons()
+        time.sleep(1.2) # 確保氣球特效完整呈現
 
         st.markdown("""
         <div class="magic-parchment">
@@ -481,7 +486,7 @@ def main():
             st.image(st.session_state.uploaded_img, caption="The Storybook Scene", use_container_width=True)
         
         with col2:
-            st.success("✨ Fairy Audio Narrated Successfully!")
+            st.markdown('<div class="success-box">✨ Fairy Audio Narrated Successfully! ✨</div>', unsafe_allow_html=True)
             st.audio(st.session_state.audio_path, format="audio/mp3")
 
         st.markdown(f"""
