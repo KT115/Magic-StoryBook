@@ -1,5 +1,4 @@
 import os
-import time
 import random
 import streamlit as st
 from PIL import Image
@@ -13,7 +12,7 @@ from transformers import (
 from gtts import gTTS
 
 # ---------------------------------------------------------
-# 頁面配置與夢幻童話粉彩主題
+# 頁面配置與樣式
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
@@ -21,7 +20,6 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Cinzel+Decorative:wght@700&display=swap');
 
-/* 全域夢幻粉彩背景 */
 [data-testid="stAppViewContainer"],
 [data-testid="stHeader"],
 .stApp {
@@ -46,7 +44,6 @@ h2, h3 {
     text-align: center;
 }
 
-/* 內容頁面卡片 */
 .magic-parchment {
     background: rgba(255, 255, 255, 0.9) !important;
     backdrop-filter: blur(12px);
@@ -57,7 +54,6 @@ h2, h3 {
     margin: 1.2rem 0 !important;
 }
 
-/* 獨立全螢幕 Loading 施法室卡片 */
 .spell-chamber {
     background: radial-gradient(circle, rgba(255,255,255,0.98) 0%, rgba(255,235,245,0.95) 100%);
     border: 4px solid #ff70a6;
@@ -70,7 +66,6 @@ h2, h3 {
     max-width: 680px;
 }
 
-/* 魔法旋轉呼吸球 */
 .magic-orb {
     display: inline-block;
     width: 95px;
@@ -128,53 +123,56 @@ div.stButton > button:hover {
 
 
 # ---------------------------------------------------------
-# 1. 模型載入函式 (Direct Load 避免 KeyError)
+# 1. 模型載入與快取
 # ---------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_caption_model():
     proc = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
     model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    model.eval()
     return proc, model
 
 @st.cache_resource(show_spinner=False)
 def load_story_model():
     tok = AutoTokenizer.from_pretrained("distilbert/distilgpt2")
     model = AutoModelForCausalLM.from_pretrained("distilbert/distilgpt2")
+    model.eval()
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     return tok, model
 
 
 # ---------------------------------------------------------
-# 2. 推論輔助函式
+# 2. 推論函式
 # ---------------------------------------------------------
-def get_caption(image, proc, model):
-    inputs = proc(images=image, return_tensors="pt")
-    with torch.no_grad():
-        out = model.generate(**inputs, max_new_tokens=40)
+def get_caption_fast(image, proc, model):
+    img_resized = image.copy()
+    img_resized.thumbnail((384, 384))
+    inputs = proc(images=img_resized, return_tensors="pt")
+    with torch.inference_mode():
+        out = model.generate(**inputs, max_new_tokens=25)
     return proc.decode(out[0], skip_special_tokens=True)
 
 
-def get_story(caption, tok, model):
+def get_story_fast(caption, tok, model):
     clean_caption = caption.strip().rstrip(".")
     prompt = (
         f"Once upon a time, there was {clean_caption}. "
-        f"Every day was full of sweet laughter and adventures! "
-        f"Suddenly, a tiny magical rainbow door opened with sparkly stars. "
-        f"With wide curious eyes, our brave little friend stepped inside to explore. "
-        f"Everyone celebrated and smiled happily ever after!"
+        f"Every day brought sweet laughter! "
+        f"One morning, a magical rainbow door opened with sparkles. "
+        f"With curious eyes, our brave little friend stepped inside to explore. "
     )
     inputs = tok(prompt, return_tensors="pt")
-    with torch.no_grad():
+    with torch.inference_mode():
         out = model.generate(
             **inputs,
-            min_new_tokens=50,
-            max_new_tokens=85,
+            min_new_tokens=45,
+            max_new_tokens=70,
             do_sample=True,
-            temperature=0.8,
-            top_k=50,
-            top_p=0.9,
-            repetition_penalty=1.3,
+            temperature=0.75,
+            top_k=30,
+            top_p=0.85,
+            repetition_penalty=1.25,
             pad_token_id=tok.eos_token_id
         )
     raw = tok.decode(out[0], skip_special_tokens=True)
@@ -182,7 +180,7 @@ def get_story(caption, tok, model):
     if last_period != -1:
         story = raw[:last_period + 1]
     else:
-        story = raw + " And everyone lived happily ever after!"
+        story = raw + " And they lived happily ever after!"
     return story
 
 
@@ -192,7 +190,6 @@ def text_to_speech(text, filename="story_audio.mp3"):
     return filename
 
 
-# 趣味魔法謎題庫
 RIDDLES = [
     ("🧙‍♂️ 'What has hands but cannot clap?'", "A clock! ⏰"),
     ("🌟 'What gets wetter the more it dries?'", "A towel! 🛁"),
@@ -203,10 +200,12 @@ RIDDLES = [
 
 
 # ---------------------------------------------------------
-# 3. 狀態初始化
+# 3. 狀態管理
 # ---------------------------------------------------------
 if "page" not in st.session_state:
     st.session_state.page = "ch1"
+if "is_loading" not in st.session_state:
+    st.session_state.is_loading = False
 if "uploaded_img" not in st.session_state:
     st.session_state.uploaded_img = None
 if "caption" not in st.session_state:
@@ -218,13 +217,13 @@ if "audio_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 4. 全獨立頁面路由器 (每一個 Chapter 與 Loading 都是獨立畫面)
+# 4. 主流程路由
 # ---------------------------------------------------------
 def main():
     st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
 
     # =========================================================
-    # PAGE: Chapter 1 (圖片上傳頁面)
+    # CHAPTER 1: 上傳圖片
     # =========================================================
     if st.session_state.page == "ch1":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
@@ -247,13 +246,13 @@ def main():
 
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
-                # 點擊只換頁面狀態並立即 rerun，舊頁面徹底清空
                 if st.button("🪄 Awaken the Magic Mirror 🪄"):
                     st.session_state.page = "load1"
+                    st.session_state.is_loading = False  # 重設運算標記
                     st.rerun()
 
     # =========================================================
-    # PAGE: Loading 1 (獨立全螢幕施法頁面：魔鏡視覺解鎖中)
+    # LOADING 1: 獨立全螢幕施法頁面
     # =========================================================
     elif st.session_state.page == "load1":
         q, _ = random.choice(RIDDLES)
@@ -273,15 +272,19 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        proc, model = load_caption_model()
-        st.session_state.caption = get_caption(st.session_state.uploaded_img, proc, model)
-        
-        time.sleep(1.8)
-        st.session_state.page = "ch2"
-        st.rerun()
+        # 雙階段渲染保證：第一拍只畫 Loading 畫面，第二拍才執行運算
+        if not st.session_state.is_loading:
+            st.session_state.is_loading = True
+            st.rerun()
+        else:
+            proc, model = load_caption_model()
+            st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
+            st.session_state.is_loading = False
+            st.session_state.page = "ch2"
+            st.rerun()
 
     # =========================================================
-    # PAGE: Chapter 2 (水晶球線索展示頁面)
+    # CHAPTER 2: 水晶球線索
     # =========================================================
     elif st.session_state.page == "ch2":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
@@ -314,10 +317,11 @@ def main():
         with btn_c:
             if st.button("📜 Weave a Fairytale from This Clue! 📜"):
                 st.session_state.page = "load2"
+                st.session_state.is_loading = False
                 st.rerun()
 
     # =========================================================
-    # PAGE: Loading 2 (獨立全螢幕施法頁面：故事編織中)
+    # LOADING 2: 故事生成獨立施法頁面
     # =========================================================
     elif st.session_state.page == "load2":
         q, _ = random.choice(RIDDLES)
@@ -337,15 +341,18 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        tok, model = load_story_model()
-        st.session_state.story = get_story(st.session_state.caption, tok, model)
-        
-        time.sleep(1.8)
-        st.session_state.page = "ch3"
-        st.rerun()
+        if not st.session_state.is_loading:
+            st.session_state.is_loading = True
+            st.rerun()
+        else:
+            tok, model = load_story_model()
+            st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
+            st.session_state.is_loading = False
+            st.session_state.page = "ch3"
+            st.rerun()
 
     # =========================================================
-    # PAGE: Chapter 3 (黃金故事卷軸頁面)
+    # CHAPTER 3: 黃金故事卷軸
     # =========================================================
     elif st.session_state.page == "ch3":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
@@ -377,6 +384,7 @@ def main():
         with btn_c1:
             if st.button("🎶 Proceed to Voice Harp (Chapter 4)"):
                 st.session_state.page = "load3"
+                st.session_state.is_loading = False
                 st.rerun()
         with btn_c2:
             if st.button("🔄 Try Another Picture"):
@@ -388,7 +396,7 @@ def main():
                 st.rerun()
 
     # =========================================================
-    # PAGE: Loading 3 (獨立全螢幕施法頁面：豎琴調音中)
+    # LOADING 3: 調音獨立施法頁面
     # =========================================================
     elif st.session_state.page == "load3":
         q, _ = random.choice(RIDDLES)
@@ -407,12 +415,17 @@ def main():
             <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem;">✨ Preparing sound chamber... ✨</p>
         </div>
         """, unsafe_allow_html=True)
-        time.sleep(1.6)
-        st.session_state.page = "ch4"
-        st.rerun()
+
+        if not st.session_state.is_loading:
+            st.session_state.is_loading = True
+            st.rerun()
+        else:
+            st.session_state.is_loading = False
+            st.session_state.page = "ch4"
+            st.rerun()
 
     # =========================================================
-    # PAGE: Chapter 4 (聲音之琴展示與完整閱讀)
+    # CHAPTER 4: 聲音之琴與故事播送
     # =========================================================
     elif st.session_state.page == "ch4":
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
@@ -438,6 +451,7 @@ def main():
                 st.markdown("<p style='text-align:center;'>Click below to summon the fairy narrator!</p>", unsafe_allow_html=True)
                 if st.button("🧚 Cast Voice Spell"):
                     st.session_state.page = "load4"
+                    st.session_state.is_loading = False
                     st.rerun()
             else:
                 st.success("✨ Fairy Audio Narrated Successfully!")
@@ -473,7 +487,7 @@ def main():
                 st.rerun()
 
     # =========================================================
-    # PAGE: Loading 4 (獨立全螢幕施法頁面：錄製仙子語音中)
+    # LOADING 4: 語音合成獨立施法頁面
     # =========================================================
     elif st.session_state.page == "load4":
         q, _ = random.choice(RIDDLES)
@@ -492,10 +506,14 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        st.session_state.audio_path = text_to_speech(st.session_state.story)
-        time.sleep(1.6)
-        st.session_state.page = "ch4"
-        st.rerun()
+        if not st.session_state.is_loading:
+            st.session_state.is_loading = True
+            st.rerun()
+        else:
+            st.session_state.audio_path = text_to_speech(st.session_state.story)
+            st.session_state.is_loading = False
+            st.session_state.page = "ch4"
+            st.rerun()
 
 
 if __name__ == "__main__":
