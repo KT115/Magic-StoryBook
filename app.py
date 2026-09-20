@@ -20,6 +20,7 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Cinzel+Decorative:wght@700&display=swap');
 
+/* 全域背景 */
 [data-testid="stAppViewContainer"],
 [data-testid="stHeader"],
 .stApp {
@@ -44,6 +45,7 @@ h2, h3 {
     text-align: center;
 }
 
+/* 內容頁面卡片 */
 .magic-parchment {
     background: rgba(255, 255, 255, 0.9) !important;
     backdrop-filter: blur(12px);
@@ -54,29 +56,29 @@ h2, h3 {
     margin: 1.2rem 0 !important;
 }
 
-.spell-chamber {
-    background: radial-gradient(circle, rgba(255,255,255,0.98) 0%, rgba(255,235,245,0.95) 100%);
+/* 獨立 Loading 頁面卡片（全畫面置中） */
+.isolated-loading-card {
+    background: #ffffff;
     border: 4px solid #ff70a6;
     border-radius: 30px;
-    padding: 3rem 1.8rem;
+    padding: 3rem 2rem;
     text-align: center;
-    box-shadow: 0 0 50px rgba(255, 112, 166, 0.65), 0 0 25px rgba(112, 214, 255, 0.5) inset;
-    animation: pulseChamber 2.5s infinite alternate;
-    margin: 2rem auto;
-    max-width: 680px;
+    box-shadow: 0 0 50px rgba(255, 112, 166, 0.55), 0 0 25px rgba(112, 214, 255, 0.5) inset;
+    margin: 3rem auto;
+    max-width: 650px;
 }
 
 .magic-orb {
     display: inline-block;
-    width: 95px;
-    height: 95px;
+    width: 100px;
+    height: 100px;
     border-radius: 50%;
     background: linear-gradient(45deg, #ff70a6, #ffd166, #70d6ff);
     box-shadow: 0 0 35px rgba(255, 112, 166, 0.85);
     animation: spinBreathe 3s infinite ease-in-out;
     margin-bottom: 1.2rem;
-    line-height: 95px;
-    font-size: 3rem;
+    line-height: 100px;
+    font-size: 3.2rem;
 }
 
 div[data-testid="stColumn"] {
@@ -113,11 +115,6 @@ div.stButton > button:hover {
     50% { transform: rotate(180deg) scale(1.15); box-shadow: 0 0 45px #70d6ff; }
     100% { transform: rotate(360deg) scale(0.9); box-shadow: 0 0 20px #ffd166; }
 }
-
-@keyframes pulseChamber {
-    0% { box-shadow: 0 0 25px rgba(255, 112, 166, 0.4); }
-    100% { box-shadow: 0 0 55px rgba(112, 214, 255, 0.85); }
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -143,7 +140,7 @@ def load_story_model():
 
 
 # ---------------------------------------------------------
-# 2. 推論函式
+# 2. 推論函式（優化速度）
 # ---------------------------------------------------------
 def get_caption_fast(image, proc, model):
     img_resized = image.copy()
@@ -204,8 +201,8 @@ RIDDLES = [
 # ---------------------------------------------------------
 if "page" not in st.session_state:
     st.session_state.page = "ch1"
-if "is_loading" not in st.session_state:
-    st.session_state.is_loading = False
+if "exec_state" not in st.session_state:
+    st.session_state.exec_state = "idle"  # idle -> ready -> working
 if "uploaded_img" not in st.session_state:
     st.session_state.uploaded_img = None
 if "caption" not in st.session_state:
@@ -216,18 +213,36 @@ if "audio_path" not in st.session_state:
     st.session_state.audio_path = ""
 
 
+def show_loading_page(icon, title, desc, sub_desc):
+    """繪製徹底獨立的 Loading 頁面"""
+    q, _ = random.choice(RIDDLES)
+    st.markdown(f"""
+    <div class="isolated-loading-card">
+        <div class="magic-orb">{icon}</div>
+        <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">{title}</h2>
+        <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold; margin: 0.5rem 0 1.2rem 0;">
+            {desc}
+        </p>
+        <div style="background: rgba(255,245,248,0.9); border-radius: 20px; padding: 1.4rem; margin: 1.2rem 0; border: 2px dashed #ffb3c6;">
+            <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
+            <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold; margin: 0.5rem 0;">{q}</p>
+            <p style="color: #ff499e; font-size: 1.05rem; margin: 0;"><i>💨 Breathe with the glowing orb: inhale, exhale, and blow soft magic dust!</i></p>
+        </div>
+        <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem; margin-top: 1rem;">{sub_desc}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ---------------------------------------------------------
-# 4. 主流程路由
+# 4. 主程式路由器：每個步驟都是獨立單一視窗
 # ---------------------------------------------------------
 def main():
-    st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-
     # =========================================================
-    # CHAPTER 1: 上傳圖片
+    # 獨立頁面 1：Chapter 1（只顯示上傳）
     # =========================================================
     if st.session_state.page == "ch1":
+        st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
-        st.progress(0.25)
 
         st.markdown("""
         <div class="magic-parchment">
@@ -247,49 +262,37 @@ def main():
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
                 if st.button("🪄 Awaken the Magic Mirror 🪄"):
+                    # 點擊立刻離開此頁，進入 Loading 1
                     st.session_state.page = "load1"
-                    st.session_state.is_loading = False  # 重設運算標記
+                    st.session_state.exec_state = "ready"
                     st.rerun()
 
     # =========================================================
-    # LOADING 1: 獨立全螢幕施法頁面
+    # 獨立頁面 2：Loading 1（整頁只有施法動畫與謎題，舊頁面徹底消失）
     # =========================================================
     elif st.session_state.page == "load1":
-        q, _ = random.choice(RIDDLES)
-        st.markdown(f"""
-        <div class="spell-chamber">
-            <div class="magic-orb">✨</div>
-            <h2 style="color: #ff477e !important;">Awakening the Mirror Vision...</h2>
-            <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold;">
-                The fairies are casting an enchantment over your picture!
-            </p>
-            <div style="background: rgba(255,255,255,0.85); border-radius: 20px; padding: 1.4rem; margin: 1.4rem 0; border: 2px dashed #ffb3c6;">
-                <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
-                <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold;">{q}</p>
-                <p style="color: #ff499e; font-size: 1.1rem;"><i>💨 Breathe with the glowing orb: inhale, exhale, and blow soft magic dust!</i></p>
-            </div>
-            <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem;">🔮 Analyzing visual clues with BLIP vision transformer... 🔮</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 雙階段渲染保證：第一拍只畫 Loading 畫面，第二拍才執行運算
-        if not st.session_state.is_loading:
-            st.session_state.is_loading = True
+        show_loading_page(
+            "✨", 
+            "Awakening the Mirror Vision...", 
+            "The fairies are casting an enchantment over your picture!", 
+            "🔮 Analyzing visual clues with BLIP vision transformer... 🔮"
+        )
+        if st.session_state.exec_state == "ready":
+            st.session_state.exec_state = "working"
             st.rerun()
-        else:
+        elif st.session_state.exec_state == "working":
             proc, model = load_caption_model()
             st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
-            st.session_state.is_loading = False
+            st.session_state.exec_state = "idle"
             st.session_state.page = "ch2"
             st.rerun()
 
     # =========================================================
-    # CHAPTER 2: 水晶球線索
+    # 獨立頁面 3：Chapter 2（只顯示水晶球線索）
     # =========================================================
     elif st.session_state.page == "ch2":
+        st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
-        st.progress(0.50)
-        st.balloons()
 
         st.markdown("""
         <div class="magic-parchment">
@@ -317,47 +320,35 @@ def main():
         with btn_c:
             if st.button("📜 Weave a Fairytale from This Clue! 📜"):
                 st.session_state.page = "load2"
-                st.session_state.is_loading = False
+                st.session_state.exec_state = "ready"
                 st.rerun()
 
     # =========================================================
-    # LOADING 2: 故事生成獨立施法頁面
+    # 獨立頁面 4：Loading 2（整頁只有故事編織施法動畫）
     # =========================================================
     elif st.session_state.page == "load2":
-        q, _ = random.choice(RIDDLES)
-        st.markdown(f"""
-        <div class="spell-chamber">
-            <div class="magic-orb">📜</div>
-            <h2 style="color: #ff477e !important;">Weaving Golden Story Threads...</h2>
-            <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold;">
-                The royal elves are dipping enchanted quills into starlight ink!
-            </p>
-            <div style="background: rgba(255,255,255,0.85); border-radius: 20px; padding: 1.4rem; margin: 1.4rem 0; border: 2px dashed #ffb3c6;">
-                <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
-                <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold;">{q}</p>
-                <p style="color: #ff499e; font-size: 1.1rem;"><i>✨ Chant along: "Abracadabra, alakazam, weave a story as fast as you can!" ✨</i></p>
-            </div>
-            <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem;">📖 Generating fairytale narrative with text-transformer... 📖</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if not st.session_state.is_loading:
-            st.session_state.is_loading = True
+        show_loading_page(
+            "📜", 
+            "Weaving Golden Story Threads...", 
+            "The royal elves are dipping enchanted quills into starlight ink!", 
+            "📖 Generating fairytale narrative with text-transformer... 📖"
+        )
+        if st.session_state.exec_state == "ready":
+            st.session_state.exec_state = "working"
             st.rerun()
-        else:
+        elif st.session_state.exec_state == "working":
             tok, model = load_story_model()
             st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
-            st.session_state.is_loading = False
+            st.session_state.exec_state = "idle"
             st.session_state.page = "ch3"
             st.rerun()
 
     # =========================================================
-    # CHAPTER 3: 黃金故事卷軸
+    # 獨立頁面 5：Chapter 3（只顯示故事卷軸）
     # =========================================================
     elif st.session_state.page == "ch3":
+        st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
-        st.progress(0.75)
-        st.snow()
 
         st.markdown("""
         <div class="magic-parchment">
@@ -384,7 +375,7 @@ def main():
         with btn_c1:
             if st.button("🎶 Proceed to Voice Harp (Chapter 4)"):
                 st.session_state.page = "load3"
-                st.session_state.is_loading = False
+                st.session_state.exec_state = "ready"
                 st.rerun()
         with btn_c2:
             if st.button("🔄 Try Another Picture"):
@@ -396,41 +387,29 @@ def main():
                 st.rerun()
 
     # =========================================================
-    # LOADING 3: 調音獨立施法頁面
+    # 獨立頁面 6：Loading 3（整頁只有豎琴調音動畫）
     # =========================================================
     elif st.session_state.page == "load3":
-        q, _ = random.choice(RIDDLES)
-        st.markdown(f"""
-        <div class="spell-chamber">
-            <div class="magic-orb">🎶</div>
-            <h2 style="color: #ff477e !important;">Tuning the Fairyland Harp...</h2>
-            <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold;">
-                The singing fairies are warming up their vocal cords to narrate your tale!
-            </p>
-            <div style="background: rgba(255,255,255,0.85); border-radius: 20px; padding: 1.4rem; margin: 1.4rem 0; border: 2px dashed #ffb3c6;">
-                <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
-                <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold;">{q}</p>
-                <p style="color: #ff499e; font-size: 1.1rem;"><i>🎵 Listen closely to the magic chimes in the air! 🎵</i></p>
-            </div>
-            <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem;">✨ Preparing sound chamber... ✨</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if not st.session_state.is_loading:
-            st.session_state.is_loading = True
+        show_loading_page(
+            "🎶", 
+            "Tuning the Fairyland Harp...", 
+            "The singing fairies are warming up their vocal cords to narrate your tale!", 
+            "✨ Preparing magical sound studio... ✨"
+        )
+        if st.session_state.exec_state == "ready":
+            st.session_state.exec_state = "working"
             st.rerun()
-        else:
-            st.session_state.is_loading = False
+        elif st.session_state.exec_state == "working":
+            st.session_state.exec_state = "idle"
             st.session_state.page = "ch4"
             st.rerun()
 
     # =========================================================
-    # CHAPTER 4: 聲音之琴與故事播送
+    # 獨立頁面 7：Chapter 4（只顯示語音與完整閱讀）
     # =========================================================
     elif st.session_state.page == "ch4":
+        st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
-        st.progress(1.0)
-        st.balloons()
 
         st.markdown("""
         <div class="magic-parchment">
@@ -451,7 +430,7 @@ def main():
                 st.markdown("<p style='text-align:center;'>Click below to summon the fairy narrator!</p>", unsafe_allow_html=True)
                 if st.button("🧚 Cast Voice Spell"):
                     st.session_state.page = "load4"
-                    st.session_state.is_loading = False
+                    st.session_state.exec_state = "ready"
                     st.rerun()
             else:
                 st.success("✨ Fairy Audio Narrated Successfully!")
@@ -487,31 +466,21 @@ def main():
                 st.rerun()
 
     # =========================================================
-    # LOADING 4: 語音合成獨立施法頁面
+    # 獨立頁面 8：Loading 4（整頁只有錄音合成動畫）
     # =========================================================
     elif st.session_state.page == "load4":
-        q, _ = random.choice(RIDDLES)
-        st.markdown(f"""
-        <div class="spell-chamber">
-            <div class="magic-orb">🎙️</div>
-            <h2 style="color: #ff477e !important;">Recording the Fairy Narration...</h2>
-            <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold;">
-                Sprinkling vocal dust and recording the story audio...
-            </p>
-            <div style="background: rgba(255,255,255,0.85); border-radius: 20px; padding: 1.4rem; margin: 1.4rem 0; border: 2px dashed #ffb3c6;">
-                <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
-                <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold;">{q}</p>
-            </div>
-            <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem;">✨ Magic microphone is listening! ✨</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if not st.session_state.is_loading:
-            st.session_state.is_loading = True
+        show_loading_page(
+            "🎙️", 
+            "Recording the Fairy Narration...", 
+            "Sprinkling vocal dust and recording the story audio...", 
+            "✨ Magic microphone is listening! ✨"
+        )
+        if st.session_state.exec_state == "ready":
+            st.session_state.exec_state = "working"
             st.rerun()
-        else:
+        elif st.session_state.exec_state == "working":
             st.session_state.audio_path = text_to_speech(st.session_state.story)
-            st.session_state.is_loading = False
+            st.session_state.exec_state = "idle"
             st.session_state.page = "ch4"
             st.rerun()
 
