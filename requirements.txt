@@ -7,4 +7,5 @@ gTTS
 moviepy
 imageio-ffmpeg
 requests
-huggingface_hub
+sentencepiece
+accelerate
