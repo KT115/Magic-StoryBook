@@ -4,12 +4,6 @@ import random
 import time
 import streamlit as st
 import streamlit.components.v1 as components
-from PIL import import os
-import re
-import random
-import time
-import streamlit as st
-import streamlit.components.v1 as components
 from PIL import Image
 import torch
 from transformers import (
