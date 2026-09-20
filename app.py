@@ -391,7 +391,6 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        # 使用 st.columns 確保按鈕 100% 左右置中
         _, btn_col, _ = st.columns([1, 2, 1])
         with btn_col:
             if st.button("📜 Weave a Fairytale 📜"):
@@ -440,7 +439,6 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        # 使用 st.columns 確保按鈕 100% 左右置中
         _, btn_col, _ = st.columns([1, 2, 1])
         with btn_col:
             if st.button("🎶 Enter Voice Studio 🎶"):
@@ -497,7 +495,6 @@ def main():
         """, unsafe_allow_html=True)
 
         st.write("")
-        # 使用 st.columns 確保按鈕 100% 左右置中
         _, btn_col, _ = st.columns([1, 2, 1])
         with btn_col:
             if st.button("🏰 Create New Fairytale"):
