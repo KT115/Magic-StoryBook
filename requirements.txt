@@ -4,8 +4,3 @@ torch
 torchvision
 Pillow
 gTTS
-moviepy
-imageio-ffmpeg
-requests
-sentencepiece
-accelerate
