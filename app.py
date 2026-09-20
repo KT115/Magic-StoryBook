@@ -1,7 +1,6 @@
 import os
 import re
 import random
-import time
 import streamlit as st
 import streamlit.components.v1 as components
 from PIL import Image
@@ -14,36 +13,33 @@ from transformers import (
 )
 from gtts import gTTS
 
-# 開啟多執行緒加速純 CPU 運算 (大幅縮減至 10 秒內)
+# 開啟多執行緒加速純 CPU 運算
 torch.set_num_threads(4)
 
 # ---------------------------------------------------------
-# 1. 頁面配置與全局音樂、樣式
+# 1. 頁面配置與全局樣式
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
-def inject_global_audio_and_scroll():
-    """注入背景音樂(BGM)與每次換頁置頂的腳本"""
+def play_magic_bling():
+    """播放高音清脆的仙子魔法棒 Bling 施法音效"""
     components.html(
         """
-        <!-- BGM 音頻元素 -->
-        <audio id="bgm" loop>
-            <source src="https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1cb8.mp3" type="audio/mpeg">
+        <audio autoplay>
+            <source src="https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3" type="audio/mpeg">
         </audio>
+        """,
+        height=0
+    )
+
+def scroll_to_top():
+    """每次換頁強制畫面平滑置頂"""
+    components.html(
+        """
         <script>
-            // 確保每次渲染都在最頂端
             window.parent.scrollTo({top: 0, behavior: 'smooth'});
             const mainSection = window.parent.document.querySelector('section.main');
             if (mainSection) { mainSection.scrollTo({top: 0, behavior: 'smooth'}); }
-
-            // 破解瀏覽器阻擋：只要使用者在畫面點擊任何地方，就開始播放 BGM
-            var bgm = document.getElementById("bgm");
-            bgm.volume = 0.15; // 15% 小聲背景音
-            window.parent.document.body.addEventListener('click', function() {
-                if (bgm.paused) {
-                    bgm.play().catch(e => console.log("BGM 播放等待中..."));
-                }
-            }, { once: true });
         </script>
         """,
         height=0
@@ -94,7 +90,7 @@ h2, h3, p { text-align: center; }
     max-width: 650px;
 }
 
-/* 升級版：超級可愛的彈跳 Loading 動畫 */
+/* 可愛彈跳 Loading 動畫 */
 .cute-loader {
     display: flex;
     justify-content: center;
@@ -136,18 +132,15 @@ div.stButton > button:hover {
 
 
 # ---------------------------------------------------------
-# 2. 獨立 Loading 畫面渲染器 (帶有魔法 Bling 音效)
+# 2. 獨立 Loading 畫面渲染器
 # ---------------------------------------------------------
 def render_loading_page(title, desc, status_text):
-    """
-    渲染獨立的 Loading 頁面，並自動播放魔法 Bling 音效！
-    """
+    play_magic_bling()
     icons = random.choice([
         ("🦄", "✨", "🧚‍♀️"),
         ("🦉", "🌙", "⭐"),
         ("👑", "🪄", "🏰")
     ])
-    
     st.markdown(f"""
     <div class="spell-chamber">
         <div class="cute-loader">
@@ -164,10 +157,6 @@ def render_loading_page(title, desc, status_text):
                 {status_text}
             </p>
         </div>
-        <!-- 每次進入 Loading 頁面，自動播放一次清脆魔法音效 -->
-        <audio autoplay>
-            <source src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3" type="audio/mpeg">
-        </audio>
     </div>
     """, unsafe_allow_html=True)
 
@@ -193,7 +182,7 @@ def load_story_model():
 
 def get_caption_fast(image, proc, model):
     img_resized = image.copy()
-    img_resized.thumbnail((224, 224)) # 壓縮至 224x224，運算只需 3 秒！
+    img_resized.thumbnail((224, 224))
     inputs = proc(images=img_resized, return_tensors="pt")
     with torch.inference_mode():
         out = model.generate(**inputs, max_new_tokens=20)
@@ -217,12 +206,10 @@ def get_story_fast(caption, tok, model):
             top_k=40,
             top_p=0.9,
             repetition_penalty=1.2,
-            no_repeat_ngram_size=3, # 絕對防止模型重複產生迴圈或無意義亂碼
+            no_repeat_ngram_size=3,
             pad_token_id=tok.eos_token_id
         )
     raw = tok.decode(out[0], skip_special_tokens=True)
-    
-    # 強力清理任何星號、底線或奇怪符號
     clean_text = re.sub(r'[*_#~\[\]`=]', '', raw).strip()
     
     last_period = max(clean_text.rfind("."), clean_text.rfind("!"), clean_text.rfind("?"))
@@ -251,16 +238,15 @@ if "story" not in st.session_state:
     st.session_state.story = ""
 if "audio_path" not in st.session_state:
     st.session_state.audio_path = ""
+if "bgm_enabled" not in st.session_state:
+    st.session_state.bgm_enabled = False
 
 
 # ---------------------------------------------------------
-# 5. 主程式流程：真正的完全獨立替換 Loading 頁面
+# 5. 主程式流程：狀態機與獨立跳轉
 # ---------------------------------------------------------
 def main():
-    inject_global_audio_and_scroll()
-    
-    # 建立唯一的主畫面插槽
-    # 每次點擊按鈕，都會透過 overwrite 這個容器，達到「瞬間換頁」且「不會疊加」的效果！
+    scroll_to_top()
     main_view = st.empty()
 
     # =========================================================
@@ -271,6 +257,28 @@ def main():
             st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
             st.progress(0.25)
+
+            # BGM 啟用按鈕（保證獲得瀏覽器授權播放）
+            col_bgm1, col_bgm2, col_bgm3 = st.columns([1, 2, 1])
+            with col_bgm2:
+                bgm_btn = st.checkbox("🎵 開啟魔法背景音樂 (Play Fairy BGM)", value=st.session_state.bgm_enabled)
+                if bgm_btn != st.session_state.bgm_enabled:
+                    st.session_state.bgm_enabled = bgm_btn
+                    st.rerun()
+
+            if st.session_state.bgm_enabled:
+                components.html(
+                    """
+                    <audio autoplay loop>
+                        <source src="https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1cb8.mp3" type="audio/mpeg">
+                    </audio>
+                    <script>
+                        var audio = document.querySelector('audio');
+                        if (audio) { audio.volume = 0.15; }
+                    </script>
+                    """,
+                    height=0
+                )
 
             st.markdown("""
             <div class="magic-parchment">
@@ -288,22 +296,27 @@ def main():
                 st.image(st.session_state.uploaded_img, caption="Your Enchanted Picture", use_container_width=True)
 
                 if st.button("🪄 Awaken the Magic Mirror 🪄"):
-                    # 1. 瞬間清空舊畫面
-                    main_view.empty()
-                    # 2. 立刻畫出獨立的 Loading 畫面並播放魔法音效
-                    with main_view.container():
-                        render_loading_page(
-                            "Awakening the Mirror...", 
-                            "The fairies are casting an enchantment over your picture!",
-                            "🔮 Analyzing visual clues with fast vision transformer... 🔮"
-                        )
-                    # 3. 背景執行模型運算 (< 10秒)
-                    proc, model = load_caption_model()
-                    st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
-                    
-                    # 4. 運算結束，進入下一頁並刷新
-                    st.session_state.page = "ch2"
+                    # 點擊立刻只修改頁面狀態並 rerun，100% 轉跳新頁面
+                    st.session_state.page = "load1"
                     st.rerun()
+
+    # =========================================================
+    # Loading 1: 獨立全螢幕施法頁面 (自動執行)
+    # =========================================================
+    elif st.session_state.page == "load1":
+        with main_view.container():
+            render_loading_page(
+                "Awakening the Mirror...", 
+                "The fairies are casting an enchantment over your picture!",
+                "🔮 Analyzing visual clues with fast vision transformer... 🔮"
+            )
+        
+        # 畫面已經先畫在瀏覽器上，此時才執行後端運算
+        proc, model = load_caption_model()
+        st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
+        
+        st.session_state.page = "ch2"
+        st.rerun()
 
     # =========================================================
     # Chapter 2: 水晶球線索
@@ -335,21 +348,28 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
 
+            # 關鍵修正：點擊只改 page 並立刻 rerun，保證立刻跳轉到獨立 Loading 頁面！
             if st.button("📜 Weave a Fairytale 📜"):
-                # 瞬間清空並進入 Loading 2
-                main_view.empty()
-                with main_view.container():
-                    render_loading_page(
-                        "Weaving Golden Threads...", 
-                        "The royal elves are dipping quills into starlight ink!",
-                        "📖 Writing your bedtime adventure story... 📖"
-                    )
-                # 執行運算
-                tok, model = load_story_model()
-                st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
-                
-                st.session_state.page = "ch3"
+                st.session_state.page = "load2"
                 st.rerun()
+
+    # =========================================================
+    # Loading 2: 獨立全螢幕施法頁面 (自動執行，絕不在 Ch2 原地等待)
+    # =========================================================
+    elif st.session_state.page == "load2":
+        with main_view.container():
+            render_loading_page(
+                "Weaving Golden Threads...", 
+                "The royal elves are dipping quills into starlight ink!",
+                "📖 Writing your bedtime adventure story... 📖"
+            )
+        
+        # 畫面已經先畫在瀏覽器上，此時才執行後端運算
+        tok, model = load_story_model()
+        st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
+        
+        st.session_state.page = "ch3"
+        st.rerun()
 
     # =========================================================
     # Chapter 3: 故事卷軸
@@ -380,19 +400,23 @@ def main():
                 """, unsafe_allow_html=True)
 
             if st.button("🎶 Enter Voice Studio 🎶"):
-                # 瞬間清空並進入 Loading 3
-                main_view.empty()
-                with main_view.container():
-                    render_loading_page(
-                        "Tuning the Fairyland Harp...", 
-                        "The singing fairies are warming up their vocal cords!",
-                        "🎙️ Synthesizing sweet bedtime voice... 🎙️"
-                    )
-                # 執行運算
-                st.session_state.audio_path = text_to_speech(st.session_state.story)
-                
-                st.session_state.page = "ch4"
+                st.session_state.page = "load3"
                 st.rerun()
+
+    # =========================================================
+    # Loading 3: 獨立全螢幕施法頁面 (自動執行)
+    # =========================================================
+    elif st.session_state.page == "load3":
+        with main_view.container():
+            render_loading_page(
+                "Tuning the Fairyland Harp...", 
+                "The singing fairies are warming up their vocal cords!",
+                "🎙️ Synthesizing sweet bedtime voice... 🎙️"
+            )
+        
+        st.session_state.audio_path = text_to_speech(st.session_state.story)
+        st.session_state.page = "ch4"
+        st.rerun()
 
     # =========================================================
     # Chapter 4: 聲音播送與最終結果 (極簡化按鈕)
@@ -431,7 +455,6 @@ def main():
             """, unsafe_allow_html=True)
 
             st.write("")
-            # 只保留一個乾淨的重置按鈕
             if st.button("🏰 Create New Fairytale"):
                 if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
                     try: os.remove(st.session_state.audio_path)
