@@ -1,22 +1,17 @@
 import os
-import re
-import io
 import time
 import random
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import torch
 from transformers import (
     BlipProcessor, 
     BlipForConditionalGeneration, 
     AutoTokenizer, 
-    AutoModelForCausalLM,
-    AutoModelForSeq2SeqLM
+    AutoModelForCausalLM
 )
 from gtts import gTTS
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
@@ -173,15 +168,9 @@ def load_story_model():
         tok.pad_token = tok.eos_token
     return tok, model
 
-@st.cache_resource(show_spinner=False)
-def load_reader_model():
-    tok = AutoTokenizer.from_pretrained("google/flan-t5-small")
-    model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
-    return tok, model
-
 
 # ---------------------------------------------------------
-# 2. Pipeline Helpers
+# 2. Pipeline Processing Helpers
 # ---------------------------------------------------------
 def get_caption(image, proc, model):
     inputs = proc(images=image, return_tensors="pt")
@@ -221,162 +210,14 @@ def get_story(caption, tok, model):
     return story
 
 
-def text_to_speech(text, filename="story_full.mp3"):
+def text_to_speech(text, filename="story_audio.mp3"):
     tts = gTTS(text=text, lang="en")
     tts.save(filename)
     return filename
 
 
-def analyze_with_flan(flan_tok, flan_model, caption, story_sentence):
-    input_text = (
-        f"Context: Image shows {caption}. Story part: '{story_sentence}'. "
-        f"Generate a short 4-word fairytale setting:"
-    )
-    inputs = flan_tok(input_text, return_tensors="pt")
-    with torch.no_grad():
-        outputs = flan_model.generate(**inputs, max_new_tokens=20)
-    visual_idea = flan_tok.decode(outputs[0], skip_special_tokens=True).strip()
-    return f"children fairytale book illustration of {visual_idea}, storybook watercolor art, cute, vibrant, warm lighting"
-
-
-def generate_fairytale_illustration_hf(prompt, fallback_img_path):
-    hf_token = st.secrets.get("HF_TOKEN", os.environ.get("HF_TOKEN", ""))
-    headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
-    api_url = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
-
-    if hf_token:
-        try:
-            response = requests.post(
-                api_url,
-                headers=headers,
-                json={"inputs": prompt, "parameters": {"negative_prompt": "ugly, blurry, distorted, dark"}},
-                timeout=20
-            )
-            if response.status_code == 200:
-                return Image.open(io.BytesIO(response.content)).convert("RGB")
-        except Exception:
-            pass
-
-    return Image.open(fallback_img_path).convert("RGB")
-
-
 # ---------------------------------------------------------
-# 3. Fairytale Book Page & Flip Video Assembly
-# ---------------------------------------------------------
-def wrap_text(text, font, max_width, draw):
-    words = text.split()
-    lines = []
-    current_line = []
-    for word in words:
-        current_line.append(word)
-        bbox = draw.textbbox((0, 0), " ".join(current_line), font=font)
-        if (bbox[2] - bbox[0]) > max_width:
-            current_line.pop()
-            lines.append(" ".join(current_line))
-            current_line = [word]
-    if current_line:
-        lines.append(" ".join(current_line))
-    return lines
-
-
-def render_fairytale_book_page(illustration, sentence, page_num, total_pages, out_path):
-    width, height = 1280, 960
-    page = Image.new("RGB", (width, height), color="#FFFDF7")
-    draw = ImageDraw.Draw(page)
-
-    draw.rectangle([25, 25, width - 25, height - 25], outline="#FF758F", width=6)
-    draw.rectangle([38, 38, width - 38, height - 38], outline="#FFD166", width=2)
-    draw.rectangle([48, 48, width - 48, height - 48], outline="#FFB3C6", width=1)
-
-    try:
-        ill_copy = illustration.copy()
-        ill_copy.thumbnail((620, 420))
-        img_x = (width - ill_copy.width) // 2
-        img_y = 90
-        page.paste(ill_copy, (img_x, img_y))
-        draw.rectangle([img_x - 4, img_y - 4, img_x + ill_copy.width + 4, img_y + ill_copy.height + 4], outline="#FF70A6", width=4)
-        draw.rectangle([img_x - 8, img_y - 8, img_x + ill_copy.width + 8, img_y + ill_copy.height + 8], outline="#FFD166", width=1)
-    except Exception:
-        pass
-
-    try:
-        font_text = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
-        font_page = ImageFont.truetype("DejaVuSans.ttf", 22)
-    except Exception:
-        font_text = ImageFont.load_default()
-        font_page = ImageFont.load_default()
-
-    text_y = 570
-    lines = wrap_text(sentence, font_text, width - 220, draw)
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font_text)
-        line_w = bbox[2] - bbox[0]
-        draw.text(((width - line_w) // 2, text_y), line, fill="#2B2D42", font=font_text)
-        text_y += 48
-
-    page_label = f"📖 Page {page_num} of {total_pages}"
-    p_bbox = draw.textbbox((0, 0), page_label, font=font_page)
-    draw.text(((width - (p_bbox[2] - p_bbox[0])) // 2, height - 70), page_label, fill="#FF477E", font=font_page)
-
-    page.save(out_path)
-    return out_path
-
-
-def make_fairytale_flip_video(fallback_img_path, caption, story_text, flan_tok, flan_model, output_path="storybook_movie.mp4"):
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', story_text) if len(s.strip()) > 3]
-    if not sentences:
-        sentences = [story_text]
-    sentences = sentences[:4]
-    total_pages = len(sentences)
-
-    page_clips = []
-    temp_files = []
-
-    for idx, sentence in enumerate(sentences, start=1):
-        scene_prompt = analyze_with_flan(flan_tok, flan_model, caption, sentence)
-        page_illustration = generate_fairytale_illustration_hf(scene_prompt, fallback_img_path)
-
-        page_img_path = f"temp_flip_page_{idx}.png"
-        render_fairytale_book_page(page_illustration, sentence, idx, total_pages, page_img_path)
-        temp_files.append(page_img_path)
-
-        page_audio_path = f"temp_flip_audio_{idx}.mp3"
-        tts = gTTS(text=sentence, lang="en", slow=False)
-        tts.save(page_audio_path)
-        temp_files.append(page_audio_path)
-
-        audio_clip = AudioFileClip(page_audio_path)
-        page_duration = max(3.5, audio_clip.duration + 0.5)
-        
-        clip = ImageClip(page_img_path).set_duration(page_duration).set_audio(audio_clip)
-        if idx > 1:
-            clip = clip.crossfadein(0.35)
-        page_clips.append(clip)
-
-    final_video = concatenate_videoclips(page_clips, method="compose")
-    final_video.write_videofile(
-        output_path,
-        fps=24,
-        codec="libx264",
-        audio_codec="aac",
-        logger=None
-    )
-
-    for c in page_clips:
-        c.close()
-    final_video.close()
-    for f in temp_files:
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except Exception:
-                pass
-
-    return output_path
-
-
-# ---------------------------------------------------------
-# 4. Interactive Riddles
+# 3. Interactive Riddles
 # ---------------------------------------------------------
 RIDDLES = [
     ("🧙‍♂️ 'What has hands but cannot clap?'", "A clock! ⏰"),
@@ -388,7 +229,7 @@ RIDDLES = [
 
 
 # ---------------------------------------------------------
-# 5. State Management
+# 4. State Management
 # ---------------------------------------------------------
 if "step" not in st.session_state:
     st.session_state.step = "ch1"
@@ -400,28 +241,25 @@ if "story" not in st.session_state:
     st.session_state.story = ""
 if "audio_path" not in st.session_state:
     st.session_state.audio_path = ""
-if "video_path" not in st.session_state:
-    st.session_state.video_path = ""
 
 
 # ---------------------------------------------------------
-# 6. Main Application Workflow (One Isolated Page per State)
+# 5. Main Application Flow
 # ---------------------------------------------------------
 def main():
     scroll_to_top()
     st.markdown('<div id="top-anchor"></div>', unsafe_allow_html=True)
     st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
 
-    # Master placeholder container guarantees old pages are completely replaced
     page_slot = st.empty()
 
     # =====================================================
-    # CHAPTER 1: Image Upload Page Only
+    # CHAPTER 1: Image Upload Page
     # =====================================================
     if st.session_state.step == "ch1":
         with page_slot.container():
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
-            st.progress(0.1)
+            st.progress(0.25)
 
             st.markdown("""
             <div class="magic-parchment">
@@ -436,7 +274,6 @@ def main():
 
             if uploaded_file is not None:
                 st.session_state.uploaded_img = Image.open(uploaded_file).convert("RGB")
-                st.session_state.uploaded_img.save("temp_input_scene.png")
                 st.image(st.session_state.uploaded_img, caption="Your Enchanted Picture", use_container_width=True)
 
                 _, btn_c, _ = st.columns([1, 2, 1])
@@ -446,7 +283,7 @@ def main():
                         st.rerun()
 
     # =====================================================
-    # LOADING PAGE 1 (Clean Separate View)
+    # LOADING PAGE 1 (Mirror Vision)
     # =====================================================
     elif st.session_state.step == "load1":
         with page_slot.container():
@@ -480,7 +317,7 @@ def main():
     elif st.session_state.step == "ch2":
         with page_slot.container():
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
-            st.progress(0.28)
+            st.progress(0.50)
             st.balloons()
 
             st.markdown("""
@@ -512,7 +349,7 @@ def main():
                     st.rerun()
 
     # =====================================================
-    # LOADING PAGE 2 (Story Weaving Only)
+    # LOADING PAGE 2 (Story Weaving)
     # =====================================================
     elif st.session_state.step == "load2":
         with page_slot.container():
@@ -541,12 +378,12 @@ def main():
             st.rerun()
 
     # =====================================================
-    # CHAPTER 3: Story Scroll Page Only
+    # CHAPTER 3: Story Scroll Page
     # =====================================================
     elif st.session_state.step == "ch3":
         with page_slot.container():
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
-            st.progress(0.48)
+            st.progress(0.75)
             st.snow()
 
             st.markdown("""
@@ -582,7 +419,7 @@ def main():
                     st.rerun()
 
     # =====================================================
-    # LOADING PAGE 3 (Tuning Voice Harp Only)
+    # LOADING PAGE 3 (Tuning Voice Harp)
     # =====================================================
     elif st.session_state.step == "load3":
         with page_slot.container():
@@ -601,18 +438,19 @@ def main():
             st.rerun()
 
     # =====================================================
-    # CHAPTER 4: Voice Harp Page Only
+    # CHAPTER 4: Voice Harp & Final Story Presentation
     # =====================================================
     elif st.session_state.step == "ch4":
         with page_slot.container():
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
-            st.progress(0.68)
+            st.progress(1.0)
+            st.balloons()
 
             st.markdown("""
             <div class="magic-parchment">
                 <h2>🎶 Chapter 4: The Voice Harp</h2>
                 <p style="font-size: 1.15rem; text-align: center;">
-                    Listen to the fairy narrator tell the story before we bind it into the movie book!
+                    Listen to the fairy narrator recite your custom bedtime story!
                 </p>
             </div>
             """, unsafe_allow_html=True)
@@ -632,6 +470,7 @@ def main():
                     st.success("✨ Fairy Audio Narrated Successfully!")
                     st.audio(st.session_state.audio_path, format="audio/mp3")
 
+            # Complete Story Reader
             st.markdown(f"""
             <div style="background: #ffffff; border: 2px dashed #ffb3c6; border-radius: 20px; padding: 1.4rem; margin-top: 1.2rem; box-shadow: 0 6px 20px rgba(255, 182, 193, 0.2);">
                 <h3 style="color: #ff477e !important; margin-top: 0;">📖 Read Along with the Story:</h3>
@@ -642,19 +481,27 @@ def main():
             """, unsafe_allow_html=True)
 
             st.write("")
-            if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
-                btn_c1, btn_c2 = st.columns([1, 1])
-                with btn_c1:
-                    if st.button("🎬 Proceed to Living Story Cinema (Chapter 5)"):
-                        st.session_state.step = "ch5"
-                        st.rerun()
-                with btn_c2:
-                    if st.button("📜 Back to Story Scroll"):
-                        st.session_state.step = "ch3"
-                        st.rerun()
+            btn_c1, btn_c2 = st.columns([1, 1])
+            with btn_c1:
+                if st.button("🏰 Create a Brand New Fairytale"):
+                    if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
+                        try:
+                            os.remove(st.session_state.audio_path)
+                        except Exception:
+                            pass
+                    st.session_state.step = "ch1"
+                    st.session_state.uploaded_img = None
+                    st.session_state.caption = ""
+                    st.session_state.story = ""
+                    st.session_state.audio_path = ""
+                    st.rerun()
+            with btn_c2:
+                if st.button("📜 Back to Story Scroll"):
+                    st.session_state.step = "ch3"
+                    st.rerun()
 
     # =====================================================
-    # LOADING PAGE 4 (Voice Recording Only)
+    # LOADING PAGE 4 (Voice Recording)
     # =====================================================
     elif st.session_state.step == "load4":
         with page_slot.container():
@@ -671,116 +518,6 @@ def main():
             time.sleep(1.5)
             st.session_state.step = "ch4"
             st.rerun()
-
-    # =====================================================
-    # CHAPTER 5: Storybook Studio Only
-    # =====================================================
-    elif st.session_state.step == "ch5":
-        with page_slot.container():
-            st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 5: The Storybook Studio</p>", unsafe_allow_html=True)
-            st.progress(0.85)
-
-            st.markdown("""
-            <div class="magic-parchment">
-                <h2>🎬 Chapter 5: The Storybook Studio</h2>
-                <p style="font-size: 1.15rem; text-align: center;">
-                    Our Hugging Face Transformers will now read Chapters 1–4, synthesize fairytale scene art for each sentence, and bind everything into an animated flip-book movie!
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.session_state.uploaded_img:
-                    st.image(st.session_state.uploaded_img, caption="Original Input Scene", use_container_width=True)
-            with col2:
-                st.markdown(f"""
-                <div style="background: rgba(255, 255, 255, 0.9); padding: 1.2rem; border-radius: 18px; border: 2px dashed #ffb3c6;">
-                    <p><strong>Clue:</strong> {st.session_state.caption.capitalize()}</p>
-                    <p><strong>Narration:</strong> Ready in audio format</p>
-                    <p><strong>Ready to synthesize:</strong> Multi-page illustrated flip storybook (&lt;30s)</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.write("")
-            _, btn_c, _ = st.columns([1, 2, 1])
-            with btn_c:
-                if st.button("✨ Bind & Animate Fairytale Storybook ✨"):
-                    st.session_state.step = "load5"
-                    st.rerun()
-
-    # =====================================================
-    # LOADING PAGE 5 (Binding Storybook Movie Only)
-    # =====================================================
-    elif st.session_state.step == "load5":
-        with page_slot.container():
-            q, a = random.choice(RIDDLES)
-            st.markdown(f"""
-            <div class="spell-chamber">
-                <div class="magic-orb">📚</div>
-                <h2 style="color: #ff477e !important;">Binding Your Animated Storybook...</h2>
-                <p style="font-size: 1.2rem; color: #6a0572; font-weight: bold;">
-                    Transformers are reading Chapters 1–4, synthesizing illustrated pages, and stitching the audio!
-                </p>
-                <div style="background: rgba(255,255,255,0.85); border-radius: 20px; padding: 1.2rem; margin: 1.2rem 0; border: 2px dashed #ffb3c6;">
-                    <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Final Fairy Riddle!</h3>
-                    <p style="font-size: 1.2rem; color: #2b2d42; font-weight: bold;">{q}</p>
-                </div>
-                <p style="color: #4361ee; font-weight: bold;">🎬 Rendering 30-second flip-book video reel... 🎬</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            flan_tok, flan_model = load_reader_model()
-            video_file = make_fairytale_flip_video(
-                "temp_input_scene.png",
-                st.session_state.caption,
-                st.session_state.story,
-                flan_tok,
-                flan_model
-            )
-            st.session_state.video_path = video_file
-            
-            st.session_state.step = "final"
-            st.rerun()
-
-    # =====================================================
-    # FINAL RESULT PAGE: Video Presentation Only
-    # =====================================================
-    elif st.session_state.step == "final":
-        with page_slot.container():
-            st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Final Result: Your Fairytale Storybook</p>", unsafe_allow_html=True)
-            st.progress(1.0)
-            st.balloons()
-
-            st.markdown("""
-            <div class="magic-parchment">
-                <h2>🎬 Your Living Fairytale Flip Storybook</h2>
-                <p style="font-size: 1.15rem; text-align: center;">
-                    Here is your animated picture book! Each page has been illustrated and narrated, auto-flipping sentence-by-sentence under 30 seconds!
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if st.session_state.video_path and os.path.exists(st.session_state.video_path):
-                st.video(st.session_state.video_path)
-
-            st.write("")
-            _, btn_c, _ = st.columns([1, 2, 1])
-            with btn_c:
-                if st.button("🏰 Create a Brand New Fairytale"):
-                    for f in ["temp_input_scene.png", st.session_state.audio_path, st.session_state.video_path]:
-                        if os.path.exists(f):
-                            try:
-                                os.remove(f)
-                            except Exception:
-                                pass
-                    st.session_state.step = "ch1"
-                    st.session_state.uploaded_img = None
-                    st.session_state.caption = ""
-                    st.session_state.story = ""
-                    st.session_state.audio_path = ""
-                    st.session_state.video_path = ""
-                    st.rerun()
 
 
 if __name__ == "__main__":
