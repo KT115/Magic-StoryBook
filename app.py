@@ -1,6 +1,7 @@
 import os
 import random
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
 import torch
 from transformers import (
@@ -11,7 +12,35 @@ from transformers import (
 )
 from gtts import gTTS
 
+# ---------------------------------------------------------
+# 頁面配置與樣式
+# ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
+
+# 強制拉回頂部的 JS（每次換頁確保在最上方）
+def scroll_to_top():
+    components.html(
+        """
+        <script>
+            function doScroll() {
+                const doc = window.parent.document;
+                const targets = [
+                    doc.documentElement,
+                    doc.body,
+                    doc.querySelector('section.main'),
+                    doc.querySelector('[data-testid="stAppViewContainer"]')
+                ];
+                targets.forEach(el => {
+                    if (el) el.scrollTop = 0;
+                });
+                window.parent.scrollTo(0, 0);
+            }
+            doScroll();
+            setTimeout(doScroll, 80);
+        </script>
+        """,
+        height=0
+    )
 
 st.markdown("""
 <style>
@@ -53,8 +82,8 @@ h2, h3 {
     margin: 1rem 0 !important;
 }
 
-/* 獨立全螢幕 Loading 施法室 */
-.isolated-loading-card {
+/* 獨立施法室頁面卡片 */
+.spell-chamber {
     background: #ffffff;
     border: 4px solid #ff70a6;
     border-radius: 30px;
@@ -209,19 +238,23 @@ if "audio_path" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# 4. 主程式：利用單一頂層容器保證舊頁面徹底清除
+# 4. 主程式：利用「獨立轉頁」的方法處理所有過渡
 # ---------------------------------------------------------
 def main():
-    # 建立一個全畫面插槽，切換頁面時會徹底清空內容
-    view = st.empty()
+    scroll_to_top()
+    st.markdown('<div id="top-anchor"></div>', unsafe_allow_html=True)
+    
+    # 建立一個全域容器，保證畫面徹底刷新
+    main_view = st.empty()
 
     # =========================================================
-    # 獨立頁面：Chapter 1（只顯示上傳區）
+    # 頁面 1：Chapter 1（只顯示上傳區）
     # =========================================================
     if st.session_state.page == "ch1":
-        with view.container():
+        with main_view.container():
             st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 1: The Magic Portal</p>", unsafe_allow_html=True)
+            st.progress(0.25)
 
             st.markdown("""
             <div class="magic-parchment">
@@ -240,47 +273,51 @@ def main():
 
                 _, btn_c, _ = st.columns([1, 2, 1])
                 with btn_c:
-                    if st.button("🪄 Awaken the Magic Mirror 🪄"):
-                        st.session_state.page = "load1"
+                    # 點擊按鈕，直接切換到 Loading 專屬新頁面！
+                    if st.button("🪄 前往魔鏡室 (Next) 🪄"):
+                        st.session_state.page = "chamber1"
                         st.rerun()
 
     # =========================================================
-    # 獨立頁面：Loading 1（整頁只有施法動畫，舊頁面徹底消失）
+    # 頁面 2：獨立 Loading 頁面 1（魔鏡室）
     # =========================================================
-    elif st.session_state.page == "load1":
-        with view.container():
+    elif st.session_state.page == "chamber1":
+        with main_view.container():
             q, _ = random.choice(RIDDLES)
             st.markdown(f"""
-            <div class="isolated-loading-card">
+            <div class="spell-chamber">
                 <div class="magic-orb">✨</div>
-                <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">Awakening the Mirror Vision...</h2>
+                <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">The Mirror Chamber</h2>
                 <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold; margin: 0.5rem 0 1.2rem 0;">
-                    The fairies are casting an enchantment over your picture!
+                    Welcome! The fairies are ready to cast an enchantment over your picture.
                 </p>
                 <div style="background: rgba(255,245,248,0.9); border-radius: 20px; padding: 1.4rem; margin: 1.2rem 0; border: 2px dashed #ffb3c6;">
                     <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
                     <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold; margin: 0.5rem 0;">{q}</p>
-                    <p style="color: #ff499e; font-size: 1.05rem; margin: 0;"><i>💨 Breathe with the glowing orb: inhale, exhale, and blow soft magic dust!</i></p>
                 </div>
-                <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem; margin-top: 1rem;">🔮 Analyzing visual clues with BLIP vision transformer... 🔮</p>
             </div>
             """, unsafe_allow_html=True)
 
-            # 在該獨立畫面下完成模型運算
-            proc, model = load_caption_model()
-            st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
-            
-            # 運算完畢切換到 Chapter 2
-            st.session_state.page = "ch2"
-            st.rerun()
+            _, btn_c, _ = st.columns([1, 2, 1])
+            with btn_c:
+                # 使用者點擊這個按鈕才開始算，畫面 100% 不會卡住
+                if st.button("✨ 施展魔法：解讀圖片 ✨"):
+                    with st.spinner("🔮 Analyzing visual clues with BLIP vision transformer... 🔮"):
+                        proc, model = load_caption_model()
+                        st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
+                    
+                    # 算完後，切換到 Chapter 2
+                    st.session_state.page = "ch2"
+                    st.rerun()
 
     # =========================================================
-    # 獨立頁面：Chapter 2（只顯示水晶球線索）
+    # 頁面 3：Chapter 2（只顯示水晶球線索）
     # =========================================================
     elif st.session_state.page == "ch2":
-        with view.container():
+        with main_view.container():
             st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 2: The Crystal Ball</p>", unsafe_allow_html=True)
+            st.progress(0.50)
             st.balloons()
 
             st.markdown("""
@@ -307,45 +344,48 @@ def main():
             st.write("")
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
-                if st.button("📜 Weave a Fairytale from This Clue! 📜"):
-                    st.session_state.page = "load2"
+                if st.button("📜 前往故事編織室 (Next) 📜"):
+                    st.session_state.page = "chamber2"
                     st.rerun()
 
     # =========================================================
-    # 獨立頁面：Loading 2（整頁只有故事生成施法動畫）
+    # 頁面 4：獨立 Loading 頁面 2（故事編織室）
     # =========================================================
-    elif st.session_state.page == "load2":
-        with view.container():
+    elif st.session_state.page == "chamber2":
+        with main_view.container():
             q, _ = random.choice(RIDDLES)
             st.markdown(f"""
-            <div class="isolated-loading-card">
+            <div class="spell-chamber">
                 <div class="magic-orb">📜</div>
-                <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">Weaving Golden Story Threads...</h2>
+                <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">The Story Forge</h2>
                 <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold; margin: 0.5rem 0 1.2rem 0;">
-                    The royal elves are dipping enchanted quills into starlight ink!
+                    The royal elves are ready with their starlight ink!
                 </p>
                 <div style="background: rgba(255,245,248,0.9); border-radius: 20px; padding: 1.4rem; margin: 1.2rem 0; border: 2px dashed #ffb3c6;">
                     <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
                     <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold; margin: 0.5rem 0;">{q}</p>
-                    <p style="color: #ff499e; font-size: 1.05rem; margin: 0;"><i>✨ Chant along: "Abracadabra, alakazam, weave a story as fast as you can!" ✨</i></p>
                 </div>
-                <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem; margin-top: 1rem;">📖 Generating fairytale narrative with text-transformer... 📖</p>
             </div>
             """, unsafe_allow_html=True)
 
-            tok, model = load_story_model()
-            st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
-
-            st.session_state.page = "ch3"
-            st.rerun()
+            _, btn_c, _ = st.columns([1, 2, 1])
+            with btn_c:
+                if st.button("✨ 施展魔法：編織童話 ✨"):
+                    with st.spinner("📖 Generating fairytale narrative with text-transformer... 📖"):
+                        tok, model = load_story_model()
+                        st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
+                    
+                    st.session_state.page = "ch3"
+                    st.rerun()
 
     # =========================================================
-    # 獨立頁面：Chapter 3（只顯示故事卷軸）
+    # 頁面 5：Chapter 3（只顯示故事卷軸）
     # =========================================================
     elif st.session_state.page == "ch3":
-        with view.container():
+        with main_view.container():
             st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
+            st.progress(0.75)
             st.snow()
 
             st.markdown("""
@@ -371,8 +411,8 @@ def main():
             st.write("")
             btn_c1, btn_c2 = st.columns([1, 1])
             with btn_c1:
-                if st.button("🎶 Proceed to Voice Harp (Chapter 4)"):
-                    st.session_state.page = "load3"
+                if st.button("🎶 前往聲音之琴室 (Next) 🎶"):
+                    st.session_state.page = "chamber3"
                     st.rerun()
             with btn_c2:
                 if st.button("🔄 Try Another Picture"):
@@ -384,37 +424,43 @@ def main():
                     st.rerun()
 
     # =========================================================
-    # 獨立頁面：Loading 3（整頁只有豎琴調音動畫）
+    # 頁面 6：獨立 Loading 頁面 3（聲音調音室）
     # =========================================================
-    elif st.session_state.page == "load3":
-        with view.container():
+    elif st.session_state.page == "chamber3":
+        with main_view.container():
             q, _ = random.choice(RIDDLES)
             st.markdown(f"""
-            <div class="isolated-loading-card">
+            <div class="spell-chamber">
                 <div class="magic-orb">🎶</div>
-                <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">Tuning the Fairyland Harp...</h2>
+                <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">The Voice Studio</h2>
                 <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold; margin: 0.5rem 0 1.2rem 0;">
-                    The singing fairies are warming up their vocal cords to narrate your tale!
+                    The singing fairies are warming up their vocal cords!
                 </p>
                 <div style="background: rgba(255,245,248,0.9); border-radius: 20px; padding: 1.4rem; margin: 1.2rem 0; border: 2px dashed #ffb3c6;">
                     <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
                     <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold; margin: 0.5rem 0;">{q}</p>
-                    <p style="color: #ff499e; font-size: 1.05rem; margin: 0;"><i>🎵 Listen closely to the magic chimes in the air! 🎵</i></p>
                 </div>
-                <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem; margin-top: 1rem;">✨ Preparing sound chamber... ✨</p>
             </div>
             """, unsafe_allow_html=True)
 
-            st.session_state.page = "ch4"
-            st.rerun()
+            _, btn_c, _ = st.columns([1, 2, 1])
+            with btn_c:
+                if st.button("✨ 施展魔法：錄製聲音 ✨"):
+                    with st.spinner("🎙️ Sprinkling vocal dust and recording audio... 🎙️"):
+                        st.session_state.audio_path = text_to_speech(st.session_state.story)
+                    
+                    st.session_state.page = "ch4"
+                    st.rerun()
 
     # =========================================================
-    # 獨立頁面：Chapter 4（只顯示語音播放與故事）
+    # 頁面 7：Chapter 4（只顯示語音與完整閱讀）
     # =========================================================
     elif st.session_state.page == "ch4":
-        with view.container():
+        with main_view.container():
             st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #6a0572; font-weight: 700;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
+            st.progress(1.0)
+            st.balloons()
 
             st.markdown("""
             <div class="magic-parchment">
@@ -431,14 +477,8 @@ def main():
                     st.image(st.session_state.uploaded_img, caption="The Storybook Scene", use_container_width=True)
             
             with col2:
-                if not st.session_state.audio_path or not os.path.exists(st.session_state.audio_path):
-                    st.markdown("<p style='text-align:center;'>Click below to summon the fairy narrator!</p>", unsafe_allow_html=True)
-                    if st.button("🧚 Cast Voice Spell"):
-                        st.session_state.page = "load4"
-                        st.rerun()
-                else:
-                    st.success("✨ Fairy Audio Narrated Successfully!")
-                    st.audio(st.session_state.audio_path, format="audio/mp3")
+                st.success("✨ Fairy Audio Narrated Successfully!")
+                st.audio(st.session_state.audio_path, format="audio/mp3")
 
             st.markdown(f"""
             <div style="background: #ffffff; border: 2px dashed #ffb3c6; border-radius: 20px; padding: 1.4rem; margin-top: 1.2rem; box-shadow: 0 6px 20px rgba(255, 182, 193, 0.2);">
@@ -468,31 +508,6 @@ def main():
                 if st.button("📜 Back to Story Scroll"):
                     st.session_state.page = "ch3"
                     st.rerun()
-
-    # =========================================================
-    # 獨立頁面：Loading 4（整頁只有錄音合成動畫）
-    # =========================================================
-    elif st.session_state.page == "load4":
-        with view.container():
-            q, _ = random.choice(RIDDLES)
-            st.markdown(f"""
-            <div class="isolated-loading-card">
-                <div class="magic-orb">🎙️</div>
-                <h2 style="color: #ff477e !important; margin: 0 0 0.5rem 0;">Recording the Fairy Narration...</h2>
-                <p style="font-size: 1.25rem; color: #6a0572; font-weight: bold; margin: 0.5rem 0 1.2rem 0;">
-                    Sprinkling vocal dust and recording the story audio...
-                </p>
-                <div style="background: rgba(255,245,248,0.9); border-radius: 20px; padding: 1.4rem; margin: 1.2rem 0; border: 2px dashed #ffb3c6;">
-                    <h3 style="color: #7209b7 !important; margin: 0 0 0.5rem 0;">🌟 Fairy Riddle Time!</h3>
-                    <p style="font-size: 1.25rem; color: #2b2d42; font-weight: bold; margin: 0.5rem 0;">{q}</p>
-                </div>
-                <p style="color: #4361ee; font-weight: bold; font-size: 1.05rem; margin-top: 1rem;">✨ Magic microphone is listening! ✨</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.session_state.audio_path = text_to_speech(st.session_state.story)
-            st.session_state.page = "ch4"
-            st.rerun()
 
 
 if __name__ == "__main__":
