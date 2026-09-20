@@ -13,11 +13,10 @@ from transformers import (
 from gtts import gTTS
 
 # ---------------------------------------------------------
-# 頁面配置與樣式
+# Page Configuration & Styling
 # ---------------------------------------------------------
 st.set_page_config(page_title="The Whispering Storybook", page_icon="🦄", layout="centered")
 
-# 強制拉回頂部的 JS（每次換頁確保在最上方）
 def scroll_to_top():
     components.html(
         """
@@ -46,7 +45,6 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Cinzel+Decorative:wght@700&display=swap');
 
-/* 全域背景 */
 [data-testid="stAppViewContainer"],
 [data-testid="stHeader"],
 .stApp {
@@ -71,7 +69,6 @@ h2, h3 {
     text-align: center;
 }
 
-/* 內容頁面卡片 */
 .magic-parchment {
     background: rgba(255, 255, 255, 0.92) !important;
     backdrop-filter: blur(12px);
@@ -82,7 +79,6 @@ h2, h3 {
     margin: 1rem 0 !important;
 }
 
-/* 獨立施法室頁面卡片 */
 .spell-chamber {
     background: #ffffff;
     border: 4px solid #ff70a6;
@@ -136,6 +132,15 @@ div.stButton > button:hover {
     box-shadow: 0 10px 25px rgba(255, 73, 158, 0.55) !important;
 }
 
+div.stButton > button:disabled {
+    background: #cccccc !important;
+    color: #888888 !important;
+    border-color: #bbbbbb !important;
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: not-allowed !important;
+}
+
 @keyframes spinBreathe {
     0% { transform: rotate(0deg) scale(0.9); box-shadow: 0 0 20px #ff70a6; }
     50% { transform: rotate(180deg) scale(1.15); box-shadow: 0 0 45px #70d6ff; }
@@ -146,7 +151,7 @@ div.stButton > button:hover {
 
 
 # ---------------------------------------------------------
-# 1. 模型載入與快取
+# 1. Models Initialization (Cached)
 # ---------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_caption_model():
@@ -166,7 +171,7 @@ def load_story_model():
 
 
 # ---------------------------------------------------------
-# 2. 推論函式
+# 2. Fast Inference Functions
 # ---------------------------------------------------------
 def get_caption_fast(image, proc, model):
     img_resized = image.copy()
@@ -223,10 +228,12 @@ RIDDLES = [
 
 
 # ---------------------------------------------------------
-# 3. 狀態管理
+# 3. State Management & Callbacks (Solves Issue 2: Double Click)
 # ---------------------------------------------------------
 if "page" not in st.session_state:
     st.session_state.page = "ch1"
+if "start_task" not in st.session_state:
+    st.session_state.start_task = False
 if "uploaded_img" not in st.session_state:
     st.session_state.uploaded_img = None
 if "caption" not in st.session_state:
@@ -236,19 +243,22 @@ if "story" not in st.session_state:
 if "audio_path" not in st.session_state:
     st.session_state.audio_path = ""
 
+# Callback Function to lock the button instantly
+def start_magic():
+    st.session_state.start_task = True
+
 
 # ---------------------------------------------------------
-# 4. 主程式：利用「獨立轉頁」的方法處理所有過渡
+# 4. Main Application Router
 # ---------------------------------------------------------
 def main():
     scroll_to_top()
     st.markdown('<div id="top-anchor"></div>', unsafe_allow_html=True)
     
-    # 建立一個全域容器，保證畫面徹底刷新
     main_view = st.empty()
 
     # =========================================================
-    # 頁面 1：Chapter 1（只顯示上傳區）
+    # CHAPTER 1: Image Upload
     # =========================================================
     if st.session_state.page == "ch1":
         with main_view.container():
@@ -273,13 +283,13 @@ def main():
 
                 _, btn_c, _ = st.columns([1, 2, 1])
                 with btn_c:
-                    # 點擊按鈕，直接切換到 Loading 專屬新頁面！
-                    if st.button("🪄 前往魔鏡室 (Next) 🪄"):
+                    if st.button("🪄 Enter the Mirror Chamber (Next) 🪄"):
                         st.session_state.page = "chamber1"
+                        st.session_state.start_task = False
                         st.rerun()
 
     # =========================================================
-    # 頁面 2：獨立 Loading 頁面 1（魔鏡室）
+    # CHAMBER 1 (LOADING PAGE 1): Decode Picture
     # =========================================================
     elif st.session_state.page == "chamber1":
         with main_view.container():
@@ -300,18 +310,21 @@ def main():
 
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
-                # 使用者點擊這個按鈕才開始算，畫面 100% 不會卡住
-                if st.button("✨ 施展魔法：解讀圖片 ✨"):
-                    with st.spinner("🔮 Analyzing visual clues with BLIP vision transformer... 🔮"):
-                        proc, model = load_caption_model()
-                        st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
-                    
-                    # 算完後，切換到 Chapter 2
-                    st.session_state.page = "ch2"
-                    st.rerun()
+                # Issue 2 Fix: Disable button after click using callback
+                st.button("✨ Cast Magic: Decode Picture ✨", on_click=start_magic, disabled=st.session_state.start_task)
+                
+            if st.session_state.start_task:
+                with st.spinner("🔮 Analyzing visual clues with BLIP vision transformer... 🔮"):
+                    proc, model = load_caption_model()
+                    st.session_state.caption = get_caption_fast(st.session_state.uploaded_img, proc, model)
+                
+                # Reset task state and move to next chapter
+                st.session_state.start_task = False
+                st.session_state.page = "ch2"
+                st.rerun()
 
     # =========================================================
-    # 頁面 3：Chapter 2（只顯示水晶球線索）
+    # CHAPTER 2: The Crystal Ball
     # =========================================================
     elif st.session_state.page == "ch2":
         with main_view.container():
@@ -344,12 +357,13 @@ def main():
             st.write("")
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
-                if st.button("📜 前往故事編織室 (Next) 📜"):
+                if st.button("📜 Enter the Story Forge (Next) 📜"):
                     st.session_state.page = "chamber2"
+                    st.session_state.start_task = False
                     st.rerun()
 
     # =========================================================
-    # 頁面 4：獨立 Loading 頁面 2（故事編織室）
+    # CHAMBER 2 (LOADING PAGE 2): Weave Fairytale
     # =========================================================
     elif st.session_state.page == "chamber2":
         with main_view.container():
@@ -370,16 +384,21 @@ def main():
 
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
-                if st.button("✨ 施展魔法：編織童話 ✨"):
-                    with st.spinner("📖 Generating fairytale narrative with text-transformer... 📖"):
-                        tok, model = load_story_model()
-                        st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
-                    
-                    st.session_state.page = "ch3"
-                    st.rerun()
+                # Issue 2 Fix: Disable button after click using callback
+                st.button("✨ Cast Magic: Weave Fairytale ✨", on_click=start_magic, disabled=st.session_state.start_task)
+            
+            if st.session_state.start_task:
+                with st.spinner("📖 Generating fairytale narrative with text-transformer... 📖"):
+                    tok, model = load_story_model()
+                    st.session_state.story = get_story_fast(st.session_state.caption, tok, model)
+                
+                # Reset task state and move to next chapter
+                st.session_state.start_task = False
+                st.session_state.page = "ch3"
+                st.rerun()
 
     # =========================================================
-    # 頁面 5：Chapter 3（只顯示故事卷軸）
+    # CHAPTER 3: The Golden Scroll
     # =========================================================
     elif st.session_state.page == "ch3":
         with main_view.container():
@@ -411,8 +430,9 @@ def main():
             st.write("")
             btn_c1, btn_c2 = st.columns([1, 1])
             with btn_c1:
-                if st.button("🎶 前往聲音之琴室 (Next) 🎶"):
+                if st.button("🎶 Enter the Voice Studio (Next) 🎶"):
                     st.session_state.page = "chamber3"
+                    st.session_state.start_task = False
                     st.rerun()
             with btn_c2:
                 if st.button("🔄 Try Another Picture"):
@@ -424,7 +444,7 @@ def main():
                     st.rerun()
 
     # =========================================================
-    # 頁面 6：獨立 Loading 頁面 3（聲音調音室）
+    # CHAMBER 3 (LOADING PAGE 3): Record Audio
     # =========================================================
     elif st.session_state.page == "chamber3":
         with main_view.container():
@@ -445,15 +465,20 @@ def main():
 
             _, btn_c, _ = st.columns([1, 2, 1])
             with btn_c:
-                if st.button("✨ 施展魔法：錄製聲音 ✨"):
-                    with st.spinner("🎙️ Sprinkling vocal dust and recording audio... 🎙️"):
-                        st.session_state.audio_path = text_to_speech(st.session_state.story)
-                    
-                    st.session_state.page = "ch4"
-                    st.rerun()
+                # Issue 2 Fix: Disable button after click using callback
+                st.button("✨ Cast Magic: Record Audio ✨", on_click=start_magic, disabled=st.session_state.start_task)
+
+            if st.session_state.start_task:
+                with st.spinner("🎙️ Sprinkling vocal dust and recording audio... 🎙️"):
+                    st.session_state.audio_path = text_to_speech(st.session_state.story)
+                
+                # Reset task state and move to next chapter
+                st.session_state.start_task = False
+                st.session_state.page = "ch4"
+                st.rerun()
 
     # =========================================================
-    # 頁面 7：Chapter 4（只顯示語音與完整閱讀）
+    # CHAPTER 4: The Voice Harp
     # =========================================================
     elif st.session_state.page == "ch4":
         with main_view.container():
@@ -477,8 +502,9 @@ def main():
                     st.image(st.session_state.uploaded_img, caption="The Storybook Scene", use_container_width=True)
             
             with col2:
-                st.success("✨ Fairy Audio Narrated Successfully!")
-                st.audio(st.session_state.audio_path, format="audio/mp3")
+                if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
+                    st.success("✨ Fairy Audio Narrated Successfully!")
+                    st.audio(st.session_state.audio_path, format="audio/mp3")
 
             st.markdown(f"""
             <div style="background: #ffffff; border: 2px dashed #ffb3c6; border-radius: 20px; padding: 1.4rem; margin-top: 1.2rem; box-shadow: 0 6px 20px rgba(255, 182, 193, 0.2);">
@@ -503,12 +529,12 @@ def main():
                     st.session_state.caption = ""
                     st.session_state.story = ""
                     st.session_state.audio_path = ""
+                    st.session_state.start_task = False
                     st.rerun()
             with btn_c2:
                 if st.button("📜 Back to Story Scroll"):
                     st.session_state.page = "ch3"
                     st.rerun()
-
 
 if __name__ == "__main__":
     main()
