@@ -54,13 +54,6 @@ p, span, label, div {
     box-shadow: 0 0 50px rgba(255, 71, 126, 0.45) !important;
 }
 
-[data-testid="stFileUploader"] { background: transparent !important; }
-[data-testid="stFileUploadDropzone"] {
-    background: radial-gradient(circle at 50% 50%, #ffffff 0%, #fff0f5 100%) !important;
-    border: 3px dashed #ff758f !important;
-    border-radius: 24px !important;
-}
-
 div[data-testid="stButton"] {
     display: flex !important;
     justify-content: center !important;
@@ -208,7 +201,7 @@ def main():
 
         st.markdown("""
         <div class="magic-parchment">
-            <h2>📜 Chapter 3: The Golden Story Scroll</h2>
+            <h2>🔮 Chapter 3: The Golden Story Scroll</h2>
         </div>
         """, unsafe_allow_html=True)
 
