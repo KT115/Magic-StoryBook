@@ -54,14 +54,15 @@ p, span, label, div {
     box-shadow: 0 0 50px rgba(255, 71, 126, 0.45) !important;
 }
 
-div[data-testid="stButton"] {
+div.stButton {
     display: flex !important;
     justify-content: center !important;
+    align-items: center !important;
     width: 100% !important;
-    margin: 1.5rem auto !important;
+    margin: 1.5rem 0 !important;
 }
 
-div[data-testid="stButton"] > button {
+div.stButton > button {
     background: linear-gradient(135deg, #ff477e 0%, #ff70a6 50%, #70d6ff 100%) !important;
     color: #ffffff !important;
     font-size: 1.2rem !important;
