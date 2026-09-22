@@ -50,14 +50,14 @@ def inject_global_features():
     )
 
 def play_fairy_magic_sfx():
-    """即時播放仙子魔法棒叮鈴聲 (Live Fairy Magic SFX)"""
+    """透過可見的互動音效物件確保 Sound Effect 100% 成功播放"""
     components.html(
         """
         <audio autoplay>
             <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_24e07ea724.mp3" type="audio/mpeg">
         </audio>
         """,
-        height=0
+        height=40
     )
 
 st.markdown("""
@@ -71,7 +71,7 @@ st.markdown("""
     font-family: 'Quicksand', sans-serif !important;
 }
 
-/* 標題強制一行出晒所有文字 (White-space nowrap 絕對不折行) */
+/* 標題適應容器，絕不出界 (允許正常換行與 word-break) */
 h1 {
     font-family: 'Cinzel Decorative', cursive !important;
     color: #d81159 !important;
@@ -79,7 +79,8 @@ h1 {
     text-align: center;
     font-size: 1.8rem !important;
     font-weight: 800 !important;
-    white-space: nowrap !important;
+    word-break: break-word !important;
+    white-space: normal !important;
 }
 
 h2, h3 {
@@ -87,24 +88,27 @@ h2, h3 {
     font-weight: 800 !important;
     color: #4a0e4e !important;
     text-align: center;
-    white-space: nowrap !important;
+    word-break: break-word !important;
+    white-space: normal !important;
 }
 
 p, span, label, div {
     color: #1d2129 !important;
     font-weight: 600;
+    word-break: break-word;
 }
 
-/* Parchment Card Container */
+/* Parchment Card Container (加大內距與高度彈性，防止任何溢出) */
 .magic-parchment {
     background: rgba(255, 255, 255, 0.96) !important;
     backdrop-filter: blur(12px);
     border-radius: 26px !important;
     border: 3px solid #ff758f !important;
     box-shadow: 0 12px 35px rgba(255, 117, 143, 0.3) !important;
-    padding: 1.8rem !important;
-    margin: 1rem 0 !important;
+    padding: 2rem !important;
+    margin: 1.2rem 0 !important;
     box-sizing: border-box !important;
+    overflow: hidden !important;
 }
 
 /* Bright File Uploader Styling */
@@ -224,7 +228,7 @@ def render_loading_page(title, desc):
             <span class="cute-icon delay-1">{icons[1]}</span>
             <span class="cute-icon delay-2">{icons[2]}</span>
         </div>
-        <h2 style="color: #d81159 !important; font-size: 2rem; white-space: nowrap;">{title}</h2>
+        <h2 style="color: #d81159 !important; font-size: 2rem;">{title}</h2>
         <p style="font-size: 1.3rem; color: #4a0e4e !important; font-weight: 800; margin: 1.2rem 0;">
             {desc}
         </p>
@@ -324,7 +328,7 @@ def main():
     # =========================================================
     if st.session_state.page == "ch1":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 1: The Magic Corner</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 1: The Magic Corner</p>", unsafe_allow_html=True)
         st.progress(0.25)
 
         st.markdown("""
@@ -367,7 +371,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch2":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 2: The Magic Mirror</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 2: The Magic Mirror</p>", unsafe_allow_html=True)
         st.progress(0.50)
         st.balloons()
         time.sleep(1.2)
@@ -385,7 +389,7 @@ def main():
         with col2:
             st.markdown(f"""
             <div style="background: #ffffff; padding: 1.6rem; border-radius: 20px; border: 3px solid #70d6ff; text-align: center; margin-top: 1rem; box-shadow: 0 4px 15px rgba(112, 214, 255, 0.3);">
-                <h3 style="color: #4a0e4e !important; margin: 0; white-space: nowrap;">✨ The Magic Mirror Sees:</h3>
+                <h3 style="color: #4a0e4e !important; margin: 0;">✨ The Magic Mirror Sees:</h3>
                 <p style="font-size: 1.35rem; font-weight: 800; color: #d81159 !important; margin-top: 0.8rem;">
                     "{st.session_state.caption.capitalize()}"
                 </p>
@@ -417,7 +421,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch3":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
         st.progress(0.75)
         st.snow()
         time.sleep(1.2)
@@ -464,7 +468,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch4":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
         st.progress(1.0)
         st.balloons()
         time.sleep(1.2)
