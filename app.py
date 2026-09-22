@@ -14,7 +14,7 @@ from transformers import (
 )
 from gtts import gTTS
 
-# Enable multi-threading for fast CPU inference
+# 開啟多執行緒加速純 CPU 運算
 torch.set_num_threads(4)
 
 # ---------------------------------------------------------
@@ -71,15 +71,15 @@ st.markdown("""
     font-family: 'Quicksand', sans-serif !important;
 }
 
-/* Titles & Headings */
+/* Titles & Headings (允許自動換行，防止 UI 出界) */
 h1 {
     font-family: 'Cinzel Decorative', cursive !important;
     color: #d81159 !important;
     text-shadow: 0 2px 10px rgba(255, 255, 255, 0.95) !important;
     text-align: center;
-    font-size: 2rem !important;
+    font-size: 1.8rem !important;
     font-weight: 800 !important;
-    white-space: nowrap !important;
+    word-break: break-word !important;
 }
 
 h2, h3 {
@@ -87,23 +87,25 @@ h2, h3 {
     font-weight: 800 !important;
     color: #4a0e4e !important;
     text-align: center;
-    white-space: nowrap !important;
+    word-break: break-word !important;
 }
 
 p, span, label, div {
     color: #1d2129 !important;
     font-weight: 600;
+    word-break: break-word;
 }
 
-/* Parchment Card Container */
+/* Parchment Card Container (防止內容溢出) */
 .magic-parchment {
     background: rgba(255, 255, 255, 0.96) !important;
     backdrop-filter: blur(12px);
     border-radius: 26px !important;
     border: 3px solid #ff758f !important;
     box-shadow: 0 12px 35px rgba(255, 117, 143, 0.3) !important;
-    padding: 2.2rem !important;
-    margin: 1.2rem 0 !important;
+    padding: 1.8rem !important;
+    margin: 1rem 0 !important;
+    box-sizing: border-box !important;
 }
 
 /* Bright File Uploader Styling */
@@ -323,7 +325,7 @@ def main():
     # =========================================================
     if st.session_state.page == "ch1":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 1: The Magic Corner</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 1: The Magic Corner</p>", unsafe_allow_html=True)
         st.progress(0.25)
 
         st.markdown("""
@@ -366,7 +368,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch2":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 2: The Magic Mirror</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 2: The Magic Mirror</p>", unsafe_allow_html=True)
         st.progress(0.50)
         st.balloons()
         time.sleep(1.2)
@@ -416,7 +418,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch3":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 3: The Golden Scroll</p>", unsafe_allow_html=True)
         st.progress(0.75)
         st.snow()
         time.sleep(1.2)
@@ -463,7 +465,7 @@ def main():
     # =========================================================
     elif st.session_state.page == "ch4":
         st.markdown("<h1>🦄 The Whispering Storybook 🦄</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800; white-space: nowrap;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #4a0e4e; font-size: 1.15rem; font-weight: 800;'>Chapter 4: The Voice Harp</p>", unsafe_allow_html=True)
         st.progress(1.0)
         st.balloons()
         time.sleep(1.2)
