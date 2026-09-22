@@ -57,8 +57,10 @@ p, span, label, div {
 div[data-testid="stButton"] {
     display: flex !important;
     justify-content: center !important;
+    width: 100% !important;
     margin: 1.5rem auto !important;
 }
+
 div[data-testid="stButton"] > button {
     background: linear-gradient(135deg, #ff477e 0%, #ff70a6 50%, #70d6ff 100%) !important;
     color: #ffffff !important;
