@@ -54,14 +54,6 @@ p, span, label, div {
     box-shadow: 0 0 50px rgba(255, 71, 126, 0.45) !important;
 }
 
-div.stButton {
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    width: 100% !important;
-    margin: 1.5rem 0 !important;
-}
-
 div.stButton > button {
     background: linear-gradient(135deg, #ff477e 0%, #ff70a6 50%, #70d6ff 100%) !important;
     color: #ffffff !important;
@@ -73,6 +65,7 @@ div.stButton > button {
     box-shadow: 0 8px 25px rgba(255, 71, 126, 0.45) !important;
     margin: 0 auto !important;
     display: block !important;
+    width: 100% !important;
 }
 
 .success-box {
@@ -180,9 +173,11 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        if st.button("📜 Weave a Fairytale 📜"):
-            st.session_state.page = "load2"
-            st.rerun()
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("📜 Weave a Fairytale 📜"):
+                st.session_state.page = "load2"
+                st.rerun()
 
     elif st.session_state.page == "load2":
         st.markdown("""
@@ -218,9 +213,11 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        if st.button("🎶 Enter Voice Studio 🎶"):
-            st.session_state.page = "load3"
-            st.rerun()
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("🎶 Enter Voice Studio 🎶"):
+                st.session_state.page = "load3"
+                st.rerun()
 
     elif st.session_state.page == "load3":
         st.markdown("""
@@ -263,16 +260,18 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        if st.button("🏰 Create New Fairytale"):
-            if st.session_state.audio and os.path.exists(st.session_state.audio):
-                try: os.remove(st.session_state.audio)
-                except: pass
-            st.session_state.page = "ch1"
-            st.session_state.img = None
-            st.session_state.caption = ""
-            st.session_state.story = ""
-            st.session_state.audio = ""
-            st.rerun()
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("🏰 Create New Fairytale"):
+                if st.session_state.audio and os.path.exists(st.session_state.audio):
+                    try: os.remove(st.session_state.audio)
+                    except: pass
+                st.session_state.page = "ch1"
+                st.session_state.img = None
+                st.session_state.caption = ""
+                st.session_state.story = ""
+                st.session_state.audio = ""
+                st.rerun()
 
 if __name__ == "__main__":
     main()
